@@ -1,0 +1,33 @@
+{
+  "name": "@prospector/mobile",
+  "private": true,
+  "version": "0.1.0",
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "prebuild": "expo prebuild"
+  },
+  "dependencies": {
+    "@elevenlabs/react-native": "1.2.15",
+    "@expo-google-fonts/plus-jakarta-sans": "^0.2.3",
+    "@livekit/react-native": "2.9.2",
+    "@livekit/react-native-webrtc": "137.0.2",
+    "@prospector/shared-types": "*",
+    "@tanstack/react-query": "^5.59.0",
+    "expo": "~52.0.0",
+    "expo-auth-session": "~6.0.0",
+    "expo-dev-client": "~5.0.0",
+    "expo-font": "~13.0.0",
+    "expo-router": "~4.0.0",
+    "expo-splash-screen": "~0.29.0",
+    "react": "18.3.1",
+    "react-native": "0.76.0",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "~18.3.0",
+    "typescript": "^5.5.0"
+  }
+}

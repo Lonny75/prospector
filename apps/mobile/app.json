@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Prospector",
+    "slug": "prospector",
+    "scheme": "prospector",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.prospector.app",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Prospector a besoin du micro pour simuler l'appel avec le prospect IA."
+      }
+    },
+    "android": {
+      "package": "com.prospector.app",
+      "permissions": ["RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-dev-client",
+      "@livekit/react-native-webrtc",
+      "@config-plugins/react-native-webrtc"
+    ]
+  }
+}

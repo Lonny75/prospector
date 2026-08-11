@@ -1,0 +1,227 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  rep
+  manager
+  admin
+}
+
+enum SessionStatus {
+  in_progress
+  completed
+  aborted
+}
+
+enum Speaker {
+  rep
+  prospect
+}
+
+enum FeedbackCategory {
+  fond
+  forme
+}
+
+enum VerbatimType {
+  moment_fort
+  a_ameliorer
+}
+
+model Organization {
+  id               String   @id @default(uuid())
+  name             String
+  stripeCustomerId String?  @unique @map("stripe_customer_id")
+  seatsPurchased   Int      @default(0) @map("seats_purchased")
+  plan             String?
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  users User[]
+
+  @@map("organizations")
+}
+
+model User {
+  id             String   @id @default(uuid())
+  email          String   @unique
+  name           String
+  googleId       String?  @unique @map("google_id")
+  role           UserRole @default(rep)
+  organizationId String?  @map("organization_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization    Organization?     @relation(fields: [organizationId], references: [id])
+  trainingSessions TrainingSession[]
+
+  @@map("users")
+}
+
+model Sector {
+  id               String  @id @default(uuid())
+  slug             String  @unique
+  label            String
+  description      String?
+  vocabularyNotes  String? @map("vocabulary_notes")
+
+  personas         Persona[]
+  trainingSessions TrainingSession[]
+
+  @@map("sectors")
+}
+
+model Persona {
+  id                     String  @id @default(uuid())
+  sectorId               String  @map("sector_id")
+  name                   String
+  baseSystemPromptFragment String @map("base_system_prompt_fragment")
+  elevenlabsVoiceId      String  @map("elevenlabs_voice_id")
+  toneMetadata           Json?   @map("tone_metadata")
+
+  sector           Sector            @relation(fields: [sectorId], references: [id])
+  trainingSessions TrainingSession[]
+
+  @@map("personas")
+}
+
+model ObjectionLevel {
+  id                     String @id @default(uuid())
+  slug                   String @unique // debutant | intermediaire | avance | expert
+  label                  String
+  systemPromptFragment   String @map("system_prompt_fragment")
+  tacticsJson            Json?  @map("tactics_json")
+
+  trainingSessions TrainingSession[]
+
+  @@map("objection_levels")
+}
+
+model CallFormat {
+  id                     String @id @default(uuid())
+  slug                   String @unique // decouverte | closing | relance ...
+  label                  String
+  targetDurationSeconds  Int    @map("target_duration_seconds")
+  systemPromptFragment   String @map("system_prompt_fragment")
+
+  trainingSessions TrainingSession[]
+
+  @@map("call_formats")
+}
+
+model TrainingSession {
+  id                      String        @id @default(uuid())
+  userId                  String        @map("user_id")
+  sectorId                String        @map("sector_id")
+  personaId               String        @map("persona_id")
+  objectionLevelId        String        @map("objection_level_id")
+  callFormatId            String        @map("call_format_id")
+  status                  SessionStatus @default(in_progress)
+  startedAt               DateTime      @default(now()) @map("started_at")
+  endedAt                 DateTime?     @map("ended_at")
+  durationSeconds         Int?          @map("duration_seconds")
+  elevenlabsConversationId String?      @map("elevenlabs_conversation_id")
+
+  user           User           @relation(fields: [userId], references: [id])
+  sector         Sector         @relation(fields: [sectorId], references: [id])
+  persona        Persona        @relation(fields: [personaId], references: [id])
+  objectionLevel ObjectionLevel @relation(fields: [objectionLevelId], references: [id])
+  callFormat     CallFormat     @relation(fields: [callFormatId], references: [id])
+  transcripts    Transcript[]
+  debrief        Debrief?
+  usageEvents    UsageEvent[]
+
+  @@map("training_sessions")
+}
+
+model Transcript {
+  id             String   @id @default(uuid())
+  sessionId      String   @map("session_id")
+  turnIndex      Int      @map("turn_index")
+  speaker        Speaker
+  text           String
+  startedAtMs    Int      @map("started_at_ms")
+  endedAtMs      Int      @map("ended_at_ms")
+
+  session TrainingSession @relation(fields: [sessionId], references: [id])
+
+  @@unique([sessionId, turnIndex])
+  @@map("transcripts")
+}
+
+model Debrief {
+  id            String   @id @default(uuid())
+  sessionId     String   @unique @map("session_id")
+  overallScore  Int      @map("overall_score")
+  fondScore     Int      @map("fond_score")
+  formeScore    Int      @map("forme_score")
+  generatedAt   DateTime @default(now()) @map("generated_at")
+  modelUsed     String   @map("model_used")
+  promptVersion String   @map("prompt_version")
+  rawJson       Json     @map("raw_json")
+
+  session     TrainingSession       @relation(fields: [sessionId], references: [id])
+  strengths   DebriefStrength[]
+  improvements DebriefImprovement[]
+  verbatims   DebriefVerbatim[]
+
+  @@map("debriefs")
+}
+
+model DebriefStrength {
+  id         String            @id @default(uuid())
+  debriefId  String            @map("debrief_id")
+  category   FeedbackCategory
+  text       String
+  orderIndex Int               @map("order_index")
+
+  debrief Debrief @relation(fields: [debriefId], references: [id])
+
+  @@map("debrief_strengths")
+}
+
+model DebriefImprovement {
+  id         String            @id @default(uuid())
+  debriefId  String            @map("debrief_id")
+  category   FeedbackCategory
+  priority   Int
+  text       String
+  orderIndex Int               @map("order_index")
+
+  debrief Debrief @relation(fields: [debriefId], references: [id])
+
+  @@map("debrief_improvements")
+}
+
+model DebriefVerbatim {
+  id                  String           @id @default(uuid())
+  debriefId           String           @map("debrief_id")
+  transcriptTurnIndex Int              @map("transcript_turn_index")
+  quoteText           String           @map("quote_text")
+  comment             String
+  type                VerbatimType
+  axis                FeedbackCategory
+
+  debrief Debrief @relation(fields: [debriefId], references: [id])
+
+  @@map("debrief_verbatims")
+}
+
+model UsageEvent {
+  id                  String   @id @default(uuid())
+  userId              String   @map("user_id")
+  sessionId           String   @map("session_id")
+  voiceMinutes        Float    @map("voice_minutes")
+  claudeTokensInCall  Int      @map("claude_tokens_in_call")
+  claudeTokensDebrief Int      @map("claude_tokens_debrief")
+  estimatedCost       Float    @map("estimated_cost")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  session TrainingSession @relation(fields: [sessionId], references: [id])
+
+  @@map("usage_events")
+}
