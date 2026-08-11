@@ -5,8 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js",
+    "build": "tsc --noEmit -p tsconfig.json",
+    "start": "tsx src/index.ts",
     "migrate": "prisma migrate dev",
     "prisma:generate": "prisma generate",
     "seed": "tsx prisma/seed.ts"
@@ -22,7 +22,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "tsx": "^4.19.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -30,7 +31,6 @@
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.14.0",
     "prisma": "^6.16.0",
-    "tsx": "^4.19.0",
     "typescript": "^5.5.0"
   }
 }
