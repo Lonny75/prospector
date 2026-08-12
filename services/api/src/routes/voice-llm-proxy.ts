@@ -105,6 +105,8 @@ async function recordTranscriptTurn(params: {
 voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
   const sessionId = req.header("x-prospector-session-id");
   console.log(`voice-llm-proxy: x-prospector-session-id reçu = ${JSON.stringify(sessionId)}`);
+  console.log(`voice-llm-proxy: x-test-conversation-id reçu = ${JSON.stringify(req.header("x-test-conversation-id"))}`);
+  console.log(`voice-llm-proxy: tous les headers = ${JSON.stringify(req.headers)}`);
 
   if (!sessionId) {
     res.status(400).json({ error: "x-prospector-session-id manquant" });
