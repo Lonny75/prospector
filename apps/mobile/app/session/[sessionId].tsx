@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable, StyleSheet, PermissionsAndroid, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useConversation } from "@elevenlabs/react-native";
 import { endTrainingSession, requestDebrief } from "../../lib/api";
@@ -24,6 +24,13 @@ export default function SessionScreen() {
   });
 
   async function handleStart() {
+    if (Platform.OS === "android") {
+      const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+        console.error("Permission micro refusée");
+        return;
+      }
+    }
     await conversation.startSession({
       agentId: ELEVENLABS_AGENT_ID,
       dynamicVariables: { secret__sessionId: sessionId },

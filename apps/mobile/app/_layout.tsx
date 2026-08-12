@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Stack } from "expo-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as SplashScreen from "expo-splash-screen";
+import { ConversationProvider } from "@elevenlabs/react-native";
 import {
   useFonts,
   PlusJakartaSans_400Regular,
@@ -31,14 +32,16 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Stack
-        screenOptions={{
-          headerTitle: "Prospector",
-          headerStyle: { backgroundColor: colors.cream },
-          headerTitleStyle: { fontFamily: "PlusJakartaSans_700Bold" },
-          contentStyle: { backgroundColor: colors.cream },
-        }}
-      />
+      <ConversationProvider>
+        <Stack
+          screenOptions={{
+            headerTitle: "Prospector",
+            headerStyle: { backgroundColor: colors.cream },
+            headerTitleStyle: { fontFamily: "PlusJakartaSans_700Bold" },
+            contentStyle: { backgroundColor: colors.cream },
+          }}
+        />
+      </ConversationProvider>
     </QueryClientProvider>
   );
 }
