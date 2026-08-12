@@ -3,6 +3,13 @@ import type { TrainingSession, DebriefResult, Sector, Persona, ObjectionLevel, C
 // TODO Phase 1 : remplacer par une variable EAS/expo-constants une fois le déploiement Railway prêt.
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
 
+/** Phase 0/1 uniquement — pas d'auth encore (voir services/api/src/routes/catalog.ts). */
+export async function fetchTestUser(): Promise<{ id: string }> {
+  const res = await fetch(`${API_URL}/catalog/test-user`);
+  if (!res.ok) throw new Error("Échec de chargement de l'utilisateur de test");
+  return res.json();
+}
+
 export async function fetchSectors(): Promise<Sector[]> {
   const res = await fetch(`${API_URL}/catalog/sectors`);
   if (!res.ok) throw new Error("Échec de chargement des secteurs");

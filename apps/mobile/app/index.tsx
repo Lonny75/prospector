@@ -2,12 +2,8 @@ import { useState } from "react";
 import { View, Text, Pressable, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { fetchSectors, fetchPersonas, fetchObjectionLevels, fetchCallFormats, createTrainingSession } from "../lib/api";
+import { fetchSectors, fetchPersonas, fetchObjectionLevels, fetchCallFormats, fetchTestUser, createTrainingSession } from "../lib/api";
 import { colors, radii, spacing, fonts } from "../lib/theme";
-
-// TODO Phase 3 : remplacer par l'utilisateur authentifié réel (OAuth Google, voir docs/plan.md).
-// Pour la Phase 0/1, coller ici l'userId affiché par `npm run seed` côté services/api.
-const TEST_USER_ID = "REPLACE_WITH_SEEDED_USER_ID";
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -16,6 +12,9 @@ export default function HomeScreen() {
   const [objectionLevelId, setObjectionLevelId] = useState<string | null>(null);
   const [callFormatId, setCallFormatId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+
+  // TODO Phase 3 : remplacer par l'utilisateur authentifié réel (OAuth Google, voir docs/plan.md).
+  const testUser = useQuery({ queryKey: ["test-user"], queryFn: fetchTestUser });
 
   const sectors = useQuery({ queryKey: ["sectors"], queryFn: fetchSectors });
   const personas = useQuery({
@@ -26,14 +25,14 @@ export default function HomeScreen() {
   const objectionLevels = useQuery({ queryKey: ["objection-levels"], queryFn: fetchObjectionLevels });
   const callFormats = useQuery({ queryKey: ["call-formats"], queryFn: fetchCallFormats });
 
-  const canStart = sectorId && personaId && objectionLevelId && callFormatId;
+  const canStart = testUser.data && sectorId && personaId && objectionLevelId && callFormatId;
 
   async function handleStart() {
-    if (!canStart) return;
+    if (!canStart || !testUser.data) return;
     setStarting(true);
     try {
       const session = await createTrainingSession({
-        userId: TEST_USER_ID,
+        userId: testUser.data.id,
         sectorId: sectorId!,
         personaId: personaId!,
         objectionLevelId: objectionLevelId!,
