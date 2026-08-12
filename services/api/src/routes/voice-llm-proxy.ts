@@ -104,6 +104,8 @@ async function recordTranscriptTurn(params: {
 
 voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
   const sessionId = req.header("x-prospector-session-id");
+  console.log(`voice-llm-proxy: x-prospector-session-id reçu = ${JSON.stringify(sessionId)}`);
+
   if (!sessionId) {
     res.status(400).json({ error: "x-prospector-session-id manquant" });
     return;
@@ -112,7 +114,14 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
   const body = req.body as OpenAiCompatibleChatRequest;
   const lastUserMessage = [...body.messages].reverse().find((m) => m.role === "user");
 
-  const { systemPrompt } = await loadSessionPromptContext(sessionId);
+  let systemPrompt: string;
+  try {
+    ({ systemPrompt } = await loadSessionPromptContext(sessionId));
+  } catch (err) {
+    console.error(`voice-llm-proxy: session introuvable pour sessionId=${sessionId}`, err);
+    res.status(404).json({ error: `Session introuvable: ${sessionId}` });
+    return;
+  }
 
   const turnStartedAt = Date.now();
 
