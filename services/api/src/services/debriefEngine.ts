@@ -86,7 +86,7 @@ async function requestDebriefFromClaude(params: {
 
   const message = await anthropic.messages.create({
     model: CLAUDE_DEBRIEF_MODEL,
-    max_tokens: 2000,
+    max_tokens: 4096,
     system: [
       {
         type: "text",
@@ -99,12 +99,21 @@ async function requestDebriefFromClaude(params: {
     tool_choice: { type: "tool", name: "submit_debrief" },
   });
 
+  if (message.stop_reason === "max_tokens") {
+    throw new Error("Réponse de Claude tronquée (max_tokens atteint) — débrief incomplet");
+  }
+
   const toolUse = message.content.find((block) => block.type === "tool_use");
   if (!toolUse || toolUse.type !== "tool_use") {
     throw new Error("Claude n'a pas retourné de tool_use pour submit_debrief");
   }
 
-  return toolUse.input as DebriefResult;
+  const candidate = toolUse.input as DebriefResult;
+  if (!candidate.fond || !candidate.forme || typeof candidate.overallScore !== "number") {
+    throw new Error(`Structure de débrief incomplète: ${JSON.stringify(candidate)}`);
+  }
+
+  return candidate;
 }
 
 /**
@@ -137,14 +146,22 @@ export async function generateDebrief(sessionId: string): Promise<{ debriefId: s
   let retryNote: string | undefined;
 
   for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
-    const candidate = await requestDebriefFromClaude({
-      transcriptText,
-      metricsFacts,
-      sectorLabel: session.sector.label,
-      objectionLevelLabel: session.objectionLevel.label,
-      callFormatLabel: session.callFormat.label,
-      retryNote,
-    });
+    let candidate: DebriefResult;
+    try {
+      candidate = await requestDebriefFromClaude({
+        transcriptText,
+        metricsFacts,
+        sectorLabel: session.sector.label,
+        objectionLevelLabel: session.objectionLevel.label,
+        callFormatLabel: session.callFormat.label,
+        retryNote,
+      });
+    } catch (err) {
+      console.error(`Débrief session=${sessionId}: échec de la tentative ${attempt}`, err);
+      if (attempt === MAX_GENERATION_ATTEMPTS) throw err;
+      retryNote = "ATTENTION : ta précédente réponse était incomplète ou mal formée. Reste concis et respecte strictement le schéma demandé.";
+      continue;
+    }
 
     const allVerbatims = [...candidate.fond.verbatims, ...candidate.forme.verbatims];
     const { allValid, failures } = verifyAllVerbatims(
