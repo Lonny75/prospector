@@ -21,8 +21,22 @@
     "plugins": [
       "expo-router",
       "expo-dev-client",
-      "@livekit/react-native-webrtc",
-      "@config-plugins/react-native-webrtc"
-    ]
+      "@livekit/react-native-expo-plugin",
+      "@config-plugins/react-native-webrtc",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "kotlinVersion": "1.9.25"
+          }
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "49f6a61f-5d2a-41a4-9935-9de03f3a10c7"
+      }
+    },
+    "owner": "prospector"
   }
 }
