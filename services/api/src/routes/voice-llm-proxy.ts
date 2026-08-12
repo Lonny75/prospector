@@ -150,17 +150,21 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
 
   let sessionId: string;
   let systemPrompt: string;
+  let sessionStartedAtMs: number;
   try {
     const context = await loadSessionPromptContext(headerSessionId);
     sessionId = context.session.id;
     systemPrompt = context.systemPrompt;
+    sessionStartedAtMs = context.session.startedAt.getTime();
   } catch (err) {
     console.error("voice-llm-proxy: impossible de résoudre une session", err);
     res.status(404).json({ error: "Aucune session disponible pour cet appel" });
     return;
   }
 
-  const turnStartedAt = Date.now();
+  // Timestamps stockés en ms RELATIFS au début de la session (pas en epoch absolu, qui déborderait
+  // la colonne Int32 en base — voir callMetrics.ts qui attend des offsets courts, pas des dates).
+  const turnStartedAt = Date.now() - sessionStartedAtMs;
 
   if (lastUserMessage) {
     await recordTranscriptTurn({
@@ -217,7 +221,7 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
       speaker: "prospect",
       text: fullText,
       startedAtMs: turnStartedAt,
-      endedAtMs: Date.now(),
+      endedAtMs: Date.now() - sessionStartedAtMs,
     });
   } catch (err) {
     console.error("voice-llm-proxy: erreur de streaming Claude", err);
