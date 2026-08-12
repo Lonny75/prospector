@@ -14,9 +14,9 @@ export default function SessionScreen() {
   const router = useRouter();
   const [ending, setEnding] = useState(false);
 
-  // TODO Phase 0 (spike) : vérifier dans la doc ElevenLabs à jour comment les dynamicVariables
-  // passées ici sont réellement transmises jusqu'au custom LLM (header/metadata) — c'est ce mécanisme
-  // qui doit porter le sessionId jusqu'à `x-prospector-session-id` côté voice-llm-proxy.ts.
+  // Le préfixe "secret__" est requis pour que la variable soit interpolée dans les request_headers
+  // du custom LLM (confirmé empiriquement via apps/voice-test — une dynamicVariable normale, sans ce
+  // préfixe, arrive côté backend comme le texte littéral "{{sessionId}}", non substitué).
   const conversation = useConversation({
     onConnect: () => console.log("Appel connecté", sessionId),
     onDisconnect: () => console.log("Appel terminé", sessionId),
@@ -26,7 +26,7 @@ export default function SessionScreen() {
   async function handleStart() {
     await conversation.startSession({
       agentId: ELEVENLABS_AGENT_ID,
-      dynamicVariables: { sessionId },
+      dynamicVariables: { secret__sessionId: sessionId },
     });
   }
 

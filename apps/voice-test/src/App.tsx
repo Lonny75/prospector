@@ -74,7 +74,7 @@ export default function App() {
     addLog("Démarrage de la session ElevenLabs...");
     await conversation.startSession({
       agentId: AGENT_ID,
-      dynamicVariables: { sessionId },
+      dynamicVariables: { secret__sessionId: sessionId },
     });
   }
 
