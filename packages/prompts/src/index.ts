@@ -1,4 +1,5 @@
 export { saasB2bPersona } from "./personas/saas-b2b.js";
+export { itPersona } from "./personas/it.js";
 export { immobilierPersona } from "./personas/immobilier.js";
 export { assurancePersona } from "./personas/assurance.js";
 export { industriePersona } from "./personas/industrie.js";
