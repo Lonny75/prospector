@@ -52,8 +52,23 @@ function resolveElevenLabsExport(moduleName) {
   return path.join(pkgRoot, target);
 }
 
+// @expo/metro-runtime (src/location/install.native.ts) fait `require("web-streams-polyfill/ponyfill/es6")`
+// en dur, sans dépendre lui-même du paquet — il compte sur la résolution Node classique pour
+// remonter jusqu'à une copie compatible (structure v3.x avec un dossier ponyfill/). La seule copie
+// avec cette structure est nichée dans expo/node_modules (v3.3.3) ; la copie hoistée à la racine
+// (v4.3.0, tirée par @livekit/react-native qui a besoin de CETTE version) a une structure différente
+// (dist/ uniquement) et ne matche pas. Comme @expo/metro-runtime n'est pas un descendant du dossier
+// où vit la copie compatible, la résolution Node normale ne peut pas la trouver — d'où la nécessité
+// de rediriger ce chemin précis à la main plutôt que de compter sur la hiérarchie node_modules.
+const WEB_STREAMS_PONYFILL_ES6 = require.resolve(
+  "expo/node_modules/web-streams-polyfill/ponyfill/es6",
+);
+
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === "web-streams-polyfill/ponyfill/es6") {
+    return { filePath: WEB_STREAMS_PONYFILL_ES6, type: "sourceFile" };
+  }
   if (moduleName.startsWith("@elevenlabs/")) {
     const resolved = resolveElevenLabsExport(moduleName);
     if (resolved && fs.existsSync(resolved)) {
