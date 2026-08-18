@@ -2,10 +2,8 @@
 // nativement, requis par le protobuf utilisé en interne par livekit-client.
 import "@bacons/text-decoder/install";
 
-// @livekit/react-native (dépendance de @elevenlabs/react-native) a besoin de ses polyfills
-// WebRTC globaux enregistrés avant que quoi que ce soit d'autre ne soit importé, sinon ça
-// plante au chargement du module ("Cannot read property 'includes' of undefined").
-import { registerGlobals } from "@livekit/react-native";
-registerGlobals();
+// NOTE : pas d'appel manuel à registerGlobals() ici — dist/index.react-native.js de
+// @elevenlabs/react-native l'appelle déjà lui-même à son propre chargement. Un double appel
+// causait "Requiring unknown module 'undefined'" (état interne corrompu côté web-streams-polyfill).
 
 import "expo-router/entry";
