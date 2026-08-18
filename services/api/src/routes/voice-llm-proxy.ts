@@ -15,23 +15,18 @@ import { composeProspectSystemPrompt } from "@prospector/prompts";
  * Configuration côté ElevenLabs : l'agent est en "Custom LLM" pointant vers
  * POST {API_URL}/voice/llm/chat/completions.
  *
- * IMPORTANT (confirmé empiriquement le 2026-08-12, voir docs/plan.md) : le templating {{variable}}
- * d'ElevenLabs dans `custom_llm.request_headers` NE FONCTIONNE PAS — testé avec une dynamicVariable
- * normale, une "secret dynamic variable" (secret__), et même une variable système garantie
- * ({{system__conversation_id}}) : dans tous les cas le header arrive côté serveur comme le texte
- * littéral non substitué. Le corps de la requête (format OpenAI chat completions) ne contient non
- * plus aucun identifiant de conversation exploitable.
+ * CORRÉLATION DE SESSION (2026-08) : le templating {{variable}} d'ElevenLabs dans
+ * `custom_llm.request_headers` NE FONCTIONNE PAS (confirmé empiriquement le 2026-08-12, voir
+ * docs/plan.md — testé avec dynamicVariable normale, secret__, et même une variable système garantie).
+ * Le mécanisme qui fonctionne : `customLlmExtraBody` côté client (`startSession({ customLlmExtraBody:
+ * { sessionId } })`) — c'est un événement de config structuré envoyé directement par le SDK, pas un
+ * templating côté serveur ElevenLabs, donc pas soumis au même bug. Il s'injecte dans le corps JSON
+ * envoyé ici (`req.body.sessionId`). Permission "custom_llm_extra_body" à activer côté agent
+ * (`platform_settings.overrides.custom_llm_extra_body: true`).
  *
- * Faute de mécanisme fiable pour corréler un appel entrant à une TrainingSession précise, on retombe
- * sur la session "in_progress" la plus récente — ACCEPTABLE UNIQUEMENT pour un usage mono-utilisateur
- * (Phase 0 solo). À remplacer avant tout usage concurrent (plusieurs commerciaux en même temps) par
- * l'un de ces mécanismes plus robustes, à explorer :
- *   1. Un agent ElevenLabs distinct par combinaison secteur/persona/niveau/format, avec des
- *      request_headers STATIQUES (pas de templating requis) identifiant la config — le backend créerait
- *      alors la TrainingSession à la volée sur le premier appel.
- *   2. Le webhook "conversation_initiation_client_data" (vu dans la config agent,
- *      `enable_conversation_initiation_client_data_from_webhook`) — ElevenLabs semble pouvoir appeler
- *      notre serveur AVANT le début de l'appel pour récupérer une config dynamique ; jamais testé.
+ * Le header x-prospector-session-id et le fallback "session in_progress la plus récente" restent en
+ * secours si jamais `req.body.sessionId` est absent (ex: ancien client mobile pas encore mis à jour) —
+ * mais ce fallback ne doit plus être le chemin normal.
  */
 export const voiceLlmProxyRouter = Router();
 
@@ -44,6 +39,7 @@ interface OpenAiCompatibleChatRequest {
   model?: string;
   messages: OpenAiCompatibleMessage[];
   stream?: boolean;
+  sessionId?: string;
 }
 
 function toOpenAiChunk(sessionId: string, deltaText: string, finishReason: string | null) {
@@ -63,24 +59,23 @@ function toOpenAiChunk(sessionId: string, deltaText: string, finishReason: strin
 }
 
 /**
- * Résout la session à utiliser pour cet appel entrant. Le header x-prospector-session-id n'est
- * fiable que s'il ressemble à un vrai UUID (le templating ElevenLabs ne fonctionnant pas, il arrive
- * généralement encore sous forme de placeholder littéral "{{...}}") — sinon on retombe sur la session
- * "in_progress" la plus récente. Voir le commentaire en tête de fichier.
+ * Résout la session à utiliser pour cet appel entrant. `bodySessionId` (via customLlmExtraBody, voir
+ * commentaire en tête de fichier) est la source fiable ; le header et le fallback ne sont que des
+ * filets de sécurité.
  */
-async function resolveSession(headerSessionId: string | undefined) {
-  const looksLikeUuid = headerSessionId && /^[0-9a-f-]{36}$/i.test(headerSessionId);
-
-  if (looksLikeUuid) {
+async function resolveSession(bodySessionId: string | undefined, headerSessionId: string | undefined) {
+  for (const candidate of [bodySessionId, headerSessionId]) {
+    const looksLikeUuid = candidate && /^[0-9a-f-]{36}$/i.test(candidate);
+    if (!looksLikeUuid) continue;
     const session = await prisma.trainingSession.findUnique({
-      where: { id: headerSessionId },
+      where: { id: candidate },
       include: { persona: true, objectionLevel: true, callFormat: true },
     });
     if (session) return session;
   }
 
   console.warn(
-    `voice-llm-proxy: header session-id invalide/absent (${JSON.stringify(headerSessionId)}), fallback sur la session in_progress la plus récente`,
+    `voice-llm-proxy: sessionId introuvable/invalide (body=${JSON.stringify(bodySessionId)}, header=${JSON.stringify(headerSessionId)}), fallback sur la session in_progress la plus récente`,
   );
 
   const fallback = await prisma.trainingSession.findFirst({
@@ -93,8 +88,8 @@ async function resolveSession(headerSessionId: string | undefined) {
   return fallback;
 }
 
-async function loadSessionPromptContext(headerSessionId: string | undefined) {
-  const session = await resolveSession(headerSessionId);
+async function loadSessionPromptContext(bodySessionId: string | undefined, headerSessionId: string | undefined) {
+  const session = await resolveSession(bodySessionId, headerSessionId);
 
   const systemPrompt = composeProspectSystemPrompt({
     persona: session.persona,
@@ -144,7 +139,6 @@ async function recordTranscriptTurn(params: {
 
 voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
   const headerSessionId = req.header("x-prospector-session-id");
-
   const body = req.body as OpenAiCompatibleChatRequest;
   const lastUserMessage = [...body.messages].reverse().find((m) => m.role === "user");
 
@@ -152,7 +146,7 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
   let systemPrompt: string;
   let sessionStartedAtMs: number;
   try {
-    const context = await loadSessionPromptContext(headerSessionId);
+    const context = await loadSessionPromptContext(body.sessionId, headerSessionId);
     sessionId = context.session.id;
     systemPrompt = context.systemPrompt;
     sessionStartedAtMs = context.session.startedAt.getTime();

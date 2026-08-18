@@ -43,8 +43,12 @@ export default function SessionScreen() {
     }
     await conversation.startSession({
       agentId: ELEVENLABS_AGENT_ID,
-      dynamicVariables: { secret__sessionId: sessionId },
       overrides: voiceId ? { tts: { voiceId } } : undefined,
+      // Le seul mécanisme fiable trouvé pour faire parvenir le sessionId jusqu'au custom LLM :
+      // customLlmExtraBody s'injecte directement dans le corps envoyé à voice-llm-proxy.ts (pas via
+      // le templating {{}} des request_headers, qui ne fonctionne jamais dans cette intégration —
+      // voir les notes en tête de voice-llm-proxy.ts).
+      customLlmExtraBody: { sessionId },
     });
   }
 
