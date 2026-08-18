@@ -4,14 +4,15 @@ import "@bacons/text-decoder/install";
 
 // Pré-remplir nous-mêmes les globals WebStreams AVANT d'appeler registerGlobals() : sa propre
 // tentative de les requérir via "web-streams-polyfill" échoue sous Metro dans ce projet
-// ("Requiring unknown module 'undefined'", cause exacte non résolue malgré plusieurs essais de
-// contournement côté resolver). En les définissant nous-mêmes en amont, son code interne
-// (shimWebstreams) les trouve déjà présents et ne tente jamais ce require cassé.
-import { ReadableStream, WritableStream, TransformStream, CountQueuingStrategy } from "web-streams-polyfill";
-if (typeof global.ReadableStream === "undefined") global.ReadableStream = ReadableStream;
-if (typeof global.WritableStream === "undefined") global.WritableStream = WritableStream;
-if (typeof global.TransformStream === "undefined") global.TransformStream = TransformStream;
-if (typeof global.CountQueuingStrategy === "undefined") global.CountQueuingStrategy = CountQueuingStrategy;
+// ("Requiring unknown module 'undefined'"). Isolé précisément : le problème vient du mécanisme
+// d'interop paresseux que Babel applique aux imports ESM (accès différé via getter, qui re-déclenche
+// un require au moment de la lecture de la propriété — et CE require-là échoue). Un require() CJS
+// direct n'a pas ce problème, contrairement à `import { X } from "..."`.
+const webStreamsPolyfill = require("web-streams-polyfill");
+if (typeof global.ReadableStream === "undefined") global.ReadableStream = webStreamsPolyfill.ReadableStream;
+if (typeof global.WritableStream === "undefined") global.WritableStream = webStreamsPolyfill.WritableStream;
+if (typeof global.TransformStream === "undefined") global.TransformStream = webStreamsPolyfill.TransformStream;
+if (typeof global.CountQueuingStrategy === "undefined") global.CountQueuingStrategy = webStreamsPolyfill.CountQueuingStrategy;
 
 // dist/index.react-native.js de @elevenlabs/react-native importe @elevenlabs/client/internal
 // AVANT d'appeler registerGlobals() lui-même (les imports ES sont évalués avant le reste du
