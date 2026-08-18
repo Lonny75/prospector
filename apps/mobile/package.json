@@ -10,6 +10,7 @@
     "prebuild": "expo prebuild"
   },
   "dependencies": {
+    "@bacons/text-decoder": "^0.0.0",
     "@config-plugins/react-native-webrtc": "^12.0.0",
     "@elevenlabs/react-native": "1.2.15",
     "@expo-google-fonts/plus-jakarta-sans": "^0.2.3",
