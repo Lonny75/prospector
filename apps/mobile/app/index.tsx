@@ -57,31 +57,40 @@ export default function HomeScreen() {
       />
       <Text style={styles.title}>Nouvel entraînement</Text>
 
-      <Section title="Secteur" loading={sectors.isLoading}>
+      <Section title="Secteur" loading={sectors.isLoading} error={sectors.isError} onRetry={() => sectors.refetch()}>
         {sectors.data?.map((s) => (
           <Option key={s.id} label={s.label} selected={s.id === sectorId} onPress={() => { setSectorId(s.id); setPersonaId(null); }} />
         ))}
       </Section>
 
       {sectorId && (
-        <Section title="Persona" loading={personas.isLoading}>
+        <Section title="Persona" loading={personas.isLoading} error={personas.isError} onRetry={() => personas.refetch()}>
           {personas.data?.map((p) => (
             <Option key={p.id} label={p.name} selected={p.id === personaId} onPress={() => setPersonaId(p.id)} />
           ))}
         </Section>
       )}
 
-      <Section title="Niveau d'objection" loading={objectionLevels.isLoading}>
+      <Section title="Niveau d'objection" loading={objectionLevels.isLoading} error={objectionLevels.isError} onRetry={() => objectionLevels.refetch()}>
         {objectionLevels.data?.map((o) => (
           <Option key={o.id} label={o.label} selected={o.id === objectionLevelId} onPress={() => setObjectionLevelId(o.id)} />
         ))}
       </Section>
 
-      <Section title="Format d'appel" loading={callFormats.isLoading}>
+      <Section title="Format d'appel" loading={callFormats.isLoading} error={callFormats.isError} onRetry={() => callFormats.refetch()}>
         {callFormats.data?.map((f) => (
           <Option key={f.id} label={f.label} selected={f.id === callFormatId} onPress={() => setCallFormatId(f.id)} />
         ))}
       </Section>
+
+      {testUser.isError && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>Impossible de te connecter au serveur. Vérifie ta connexion.</Text>
+          <Pressable onPress={() => testUser.refetch()}>
+            <Text style={styles.retryText}>Réessayer</Text>
+          </Pressable>
+        </View>
+      )}
 
       <Pressable
         style={[styles.startButton, !canStart && styles.startButtonDisabled]}
@@ -94,11 +103,34 @@ export default function HomeScreen() {
   );
 }
 
-function Section({ title, loading, children }: { title: string; loading: boolean; children: React.ReactNode }) {
+function Section({
+  title,
+  loading,
+  error,
+  onRetry,
+  children,
+}: {
+  title: string;
+  loading: boolean;
+  error?: boolean;
+  onRetry?: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      {loading ? <ActivityIndicator color={colors.black} /> : <View style={styles.optionsRow}>{children}</View>}
+      {loading ? (
+        <ActivityIndicator color={colors.black} />
+      ) : error ? (
+        <View style={styles.sectionError}>
+          <Text style={styles.errorText}>Échec du chargement.</Text>
+          <Pressable onPress={onRetry}>
+            <Text style={styles.retryText}>Réessayer</Text>
+          </Pressable>
+        </View>
+      ) : (
+        <View style={styles.optionsRow}>{children}</View>
+      )}
     </View>
   );
 }
@@ -127,6 +159,10 @@ const styles = StyleSheet.create({
   optionSelected: { backgroundColor: colors.purple },
   optionText: { color: colors.black, fontFamily: fonts.medium },
   optionTextSelected: { color: colors.white, fontFamily: fonts.bold },
+  sectionError: { gap: spacing.xs },
+  errorBanner: { backgroundColor: colors.white, borderRadius: radii.card, padding: spacing.md, gap: spacing.xs, borderWidth: 1, borderColor: colors.red },
+  errorText: { fontFamily: fonts.medium, color: colors.red },
+  retryText: { fontFamily: fonts.bold, color: colors.black },
   startButton: {
     marginTop: spacing.md,
     backgroundColor: colors.black,

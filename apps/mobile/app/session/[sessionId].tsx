@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { View, Text, Pressable, StyleSheet, PermissionsAndroid, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useConversation } from "@elevenlabs/react-native";
@@ -9,51 +9,87 @@ import { colors, radii, spacing, fonts } from "../../lib/theme";
 // {API_URL}/voice/llm/chat/completions (voir services/api/src/routes/voice-llm-proxy.ts).
 const ELEVENLABS_AGENT_ID = process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID ?? "REPLACE_WITH_AGENT_ID";
 
+// Coupe-circuit coût : un appel oublié ouvert facture des minutes ElevenLabs + tokens Claude en
+// continu. 20 minutes est largement au-dessus du format le plus long (closing, 15 min cible).
+const MAX_CALL_DURATION_MS = 20 * 60 * 1000;
+
 export default function SessionScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const router = useRouter();
   const [ending, setEnding] = useState(false);
   const [voiceId, setVoiceId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [callError, setCallError] = useState<string | null>(null);
+  const autoEndTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // La voix du persona n'est pas fixée sur l'agent ElevenLabs (un seul agent pour tous les
   // personas) — on la récupère ici et on la passe en override à chaque appel (permission
   // "voice_id override" activée côté agent, voir docs/plan.md).
-  useEffect(() => {
+  function loadPersonaVoice() {
+    setLoadError(false);
     fetchTrainingSession(sessionId)
       .then((session) => setVoiceId(session.persona.elevenlabsVoiceId))
-      .catch((err) => console.error("Échec de chargement du persona", err));
+      .catch((err) => {
+        console.error("Échec de chargement du persona", err);
+        setLoadError(true);
+      });
+  }
+
+  useEffect(() => {
+    loadPersonaVoice();
+    return () => {
+      if (autoEndTimer.current) clearTimeout(autoEndTimer.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
-  // Le préfixe "secret__" est requis pour que la variable soit interpolée dans les request_headers
-  // du custom LLM (confirmé empiriquement via apps/voice-test — une dynamicVariable normale, sans ce
-  // préfixe, arrive côté backend comme le texte littéral "{{sessionId}}", non substitué).
   const conversation = useConversation({
-    onConnect: () => console.log("Appel connecté", sessionId),
-    onDisconnect: () => console.log("Appel terminé", sessionId),
-    onError: (error: unknown) => console.error("Erreur ElevenLabs", error),
+    onConnect: () => {
+      console.log("Appel connecté", sessionId);
+      setCallError(null);
+      autoEndTimer.current = setTimeout(() => {
+        console.warn("Durée maximale d'appel atteinte, fin automatique");
+        handleEnd();
+      }, MAX_CALL_DURATION_MS);
+    },
+    onDisconnect: () => {
+      console.log("Appel terminé", sessionId);
+      if (autoEndTimer.current) clearTimeout(autoEndTimer.current);
+    },
+    onError: (error: unknown) => {
+      console.error("Erreur ElevenLabs", error);
+      setCallError("La connexion à l'appel a échoué. Vérifie ta connexion et réessaie.");
+    },
   });
 
   async function handleStart() {
+    setCallError(null);
     if (Platform.OS === "android") {
       const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
       if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-        console.error("Permission micro refusée");
+        setCallError("Le micro est nécessaire pour démarrer l'appel — autorise l'accès dans les réglages du téléphone.");
         return;
       }
     }
-    await conversation.startSession({
-      agentId: ELEVENLABS_AGENT_ID,
-      overrides: voiceId ? { tts: { voiceId } } : undefined,
-      // Le seul mécanisme fiable trouvé pour faire parvenir le sessionId jusqu'au custom LLM :
-      // customLlmExtraBody s'injecte directement dans le corps envoyé à voice-llm-proxy.ts (pas via
-      // le templating {{}} des request_headers, qui ne fonctionne jamais dans cette intégration —
-      // voir les notes en tête de voice-llm-proxy.ts).
-      customLlmExtraBody: { sessionId },
-    });
+    try {
+      await conversation.startSession({
+        agentId: ELEVENLABS_AGENT_ID,
+        overrides: voiceId ? { tts: { voiceId } } : undefined,
+        // Le seul mécanisme fiable trouvé pour faire parvenir le sessionId jusqu'au custom LLM :
+        // customLlmExtraBody s'injecte directement dans le corps envoyé à voice-llm-proxy.ts (pas via
+        // le templating {{}} des request_headers, qui ne fonctionne jamais dans cette intégration —
+        // voir les notes en tête de voice-llm-proxy.ts).
+        customLlmExtraBody: { sessionId },
+      });
+    } catch (err) {
+      console.error("Échec du démarrage de l'appel", err);
+      setCallError("Impossible de démarrer l'appel. Réessaie dans quelques instants.");
+    }
   }
 
   async function handleEnd() {
     setEnding(true);
+    if (autoEndTimer.current) clearTimeout(autoEndTimer.current);
     try {
       await conversation.endSession();
       await endTrainingSession(sessionId);
@@ -61,7 +97,9 @@ export default function SessionScreen() {
       // long — on ne fait pas attendre l'utilisateur ici, l'écran de débrief prend le relais et
       // affiche clairement que l'analyse est en cours.
       router.replace(`/debrief/${sessionId}`);
-    } finally {
+    } catch (err) {
+      console.error("Échec de la fin de session", err);
+      setCallError("L'appel s'est terminé mais une erreur est survenue. Le débrief pourrait être indisponible.");
       setEnding(false);
     }
   }
@@ -77,7 +115,20 @@ export default function SessionScreen() {
         </Text>
       </View>
 
-      {!isConnected ? (
+      {callError && (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>{callError}</Text>
+        </View>
+      )}
+
+      {loadError ? (
+        <View style={styles.errorBanner}>
+          <Text style={styles.errorText}>Impossible de charger cet entraînement.</Text>
+          <Pressable onPress={loadPersonaVoice}>
+            <Text style={styles.retryText}>Réessayer</Text>
+          </Pressable>
+        </View>
+      ) : !isConnected ? (
         <Pressable style={[styles.startButton, !voiceId && styles.startButtonDisabled]} onPress={handleStart} disabled={!voiceId}>
           <Text style={styles.buttonText}>{voiceId ? "Démarrer l'appel" : "Chargement..."}</Text>
         </Pressable>
@@ -104,6 +155,9 @@ const styles = StyleSheet.create({
   pulseDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.textMuted },
   pulseDotActive: { backgroundColor: colors.purple },
   status: { fontSize: 16, fontFamily: fonts.bold, color: colors.black },
+  errorBanner: { backgroundColor: colors.white, borderRadius: radii.card, padding: spacing.md, gap: spacing.xs, borderWidth: 1, borderColor: colors.red, maxWidth: 320 },
+  errorText: { fontFamily: fonts.medium, color: colors.red, textAlign: "center" },
+  retryText: { fontFamily: fonts.bold, color: colors.black, textAlign: "center", marginTop: spacing.xs },
   startButton: { backgroundColor: colors.black, padding: 20, borderRadius: radii.pill, paddingHorizontal: 36 },
   startButtonDisabled: { opacity: 0.35 },
   endButton: { backgroundColor: colors.red, padding: 20, borderRadius: radii.pill, paddingHorizontal: 36 },
