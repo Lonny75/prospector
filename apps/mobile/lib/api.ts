@@ -50,6 +50,14 @@ export async function createTrainingSession(params: {
   return res.json();
 }
 
+export async function fetchTrainingSession(
+  sessionId: string,
+): Promise<TrainingSession & { persona: Persona }> {
+  const res = await fetch(`${API_URL}/sessions/${sessionId}`);
+  if (!res.ok) throw new Error("Échec de chargement de la session");
+  return res.json();
+}
+
 export async function endTrainingSession(sessionId: string): Promise<TrainingSession> {
   const res = await fetch(`${API_URL}/sessions/${sessionId}/end`, { method: "POST" });
   if (!res.ok) throw new Error("Échec de fin de session");

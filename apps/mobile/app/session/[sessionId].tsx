@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet, PermissionsAndroid, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useConversation } from "@elevenlabs/react-native";
-import { endTrainingSession } from "../../lib/api";
+import { endTrainingSession, fetchTrainingSession } from "../../lib/api";
 import { colors, radii, spacing, fonts } from "../../lib/theme";
 
 // TODO Phase 0 : ID de l'agent ElevenLabs configuré en "Custom LLM" pointant vers
@@ -13,6 +13,16 @@ export default function SessionScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const router = useRouter();
   const [ending, setEnding] = useState(false);
+  const [voiceId, setVoiceId] = useState<string | null>(null);
+
+  // La voix du persona n'est pas fixée sur l'agent ElevenLabs (un seul agent pour tous les
+  // personas) — on la récupère ici et on la passe en override à chaque appel (permission
+  // "voice_id override" activée côté agent, voir docs/plan.md).
+  useEffect(() => {
+    fetchTrainingSession(sessionId)
+      .then((session) => setVoiceId(session.persona.elevenlabsVoiceId))
+      .catch((err) => console.error("Échec de chargement du persona", err));
+  }, [sessionId]);
 
   // Le préfixe "secret__" est requis pour que la variable soit interpolée dans les request_headers
   // du custom LLM (confirmé empiriquement via apps/voice-test — une dynamicVariable normale, sans ce
@@ -34,6 +44,7 @@ export default function SessionScreen() {
     await conversation.startSession({
       agentId: ELEVENLABS_AGENT_ID,
       dynamicVariables: { secret__sessionId: sessionId },
+      overrides: voiceId ? { tts: { voiceId } } : undefined,
     });
   }
 
@@ -63,8 +74,8 @@ export default function SessionScreen() {
       </View>
 
       {!isConnected ? (
-        <Pressable style={styles.startButton} onPress={handleStart}>
-          <Text style={styles.buttonText}>Démarrer l'appel</Text>
+        <Pressable style={[styles.startButton, !voiceId && styles.startButtonDisabled]} onPress={handleStart} disabled={!voiceId}>
+          <Text style={styles.buttonText}>{voiceId ? "Démarrer l'appel" : "Chargement..."}</Text>
         </Pressable>
       ) : (
         <Pressable style={styles.endButton} onPress={handleEnd} disabled={ending}>
@@ -90,6 +101,7 @@ const styles = StyleSheet.create({
   pulseDotActive: { backgroundColor: colors.purple },
   status: { fontSize: 16, fontFamily: fonts.bold, color: colors.black },
   startButton: { backgroundColor: colors.black, padding: 20, borderRadius: radii.pill, paddingHorizontal: 36 },
+  startButtonDisabled: { opacity: 0.35 },
   endButton: { backgroundColor: colors.red, padding: 20, borderRadius: radii.pill, paddingHorizontal: 36 },
   buttonText: { color: colors.white, fontFamily: fonts.bold, fontSize: 16 },
 });

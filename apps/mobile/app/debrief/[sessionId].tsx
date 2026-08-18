@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { ScrollView, View, Text, ActivityIndicator, StyleSheet } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { ScrollView, View, Text, Pressable, ActivityIndicator, StyleSheet } from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import type { DebriefResult } from "@prospector/shared-types";
 import { requestDebrief, fetchDebrief } from "../../lib/api";
 import { colors, radii, spacing, fonts } from "../../lib/theme";
@@ -9,6 +9,7 @@ type Status = "generating" | "ready" | "error";
 
 export default function DebriefScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
+  const router = useRouter();
   const [status, setStatus] = useState<Status>("generating");
   const [debrief, setDebrief] = useState<DebriefResult | null>(null);
 
@@ -67,6 +68,10 @@ export default function DebriefScreen() {
 
       <Axis title="Fond" score={fond.score} strengths={fond.strengths} improvements={fond.improvements} />
       <Axis title="Forme" score={forme.score} strengths={forme.strengths} improvements={forme.improvements} />
+
+      <Pressable style={styles.newSessionButton} onPress={() => router.replace("/")}>
+        <Text style={styles.newSessionButtonText}>Nouvel entraînement</Text>
+      </Pressable>
     </ScrollView>
   );
 }
@@ -111,6 +116,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: colors.cream, padding: spacing.lg },
   generatingTitle: { fontFamily: fonts.bold, fontSize: 17, color: colors.black, marginTop: spacing.sm, textAlign: "center" },
   muted: { fontFamily: fonts.medium, color: colors.textMuted, textAlign: "center" },
+  newSessionButton: { backgroundColor: colors.black, padding: 18, borderRadius: radii.pill, alignItems: "center", marginTop: spacing.sm },
+  newSessionButtonText: { color: colors.white, fontFamily: fonts.bold, fontSize: 16 },
   scoreCard: {
     backgroundColor: colors.purple,
     borderRadius: radii.card,

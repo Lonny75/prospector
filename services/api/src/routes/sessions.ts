@@ -25,6 +25,20 @@ sessionsRouter.post("/", async (req, res) => {
   res.status(201).json(session);
 });
 
+sessionsRouter.get("/:id", async (req, res) => {
+  const session = await prisma.trainingSession.findUnique({
+    where: { id: req.params.id },
+    include: { persona: true, sector: true, objectionLevel: true, callFormat: true },
+  });
+
+  if (!session) {
+    res.status(404).json({ error: "Session introuvable" });
+    return;
+  }
+
+  res.json(session);
+});
+
 sessionsRouter.post("/:id/end", async (req, res) => {
   const session = await prisma.trainingSession.update({
     where: { id: req.params.id },
