@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { View, Text, Pressable, ActivityIndicator, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
+import { View, Text, Pressable, ActivityIndicator, ScrollView, StyleSheet } from "react-native";
+import { useRouter, Stack } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSectors, fetchPersonas, fetchObjectionLevels, fetchCallFormats, fetchTestUser, createTrainingSession } from "../lib/api";
 import { colors, radii, spacing, fonts } from "../lib/theme";
@@ -45,7 +45,16 @@ export default function HomeScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView contentContainerStyle={styles.container} style={{ backgroundColor: colors.cream }}>
+      <Stack.Screen
+        options={{
+          headerRight: () => (
+            <Pressable onPress={() => router.push("/history")} hitSlop={10}>
+              <Text style={styles.historyLink}>Historique</Text>
+            </Pressable>
+          ),
+        }}
+      />
       <Text style={styles.title}>Nouvel entraînement</Text>
 
       <Section title="Secteur" loading={sectors.isLoading}>
@@ -81,7 +90,7 @@ export default function HomeScreen() {
       >
         {starting ? <ActivityIndicator color={colors.white} /> : <Text style={styles.startButtonText}>Démarrer l'appel</Text>}
       </Pressable>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -103,8 +112,9 @@ function Option({ label, selected, onPress }: { label: string; selected: boolean
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.cream },
+  container: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl },
   title: { fontSize: 24, fontFamily: fonts.extraBold, color: colors.black },
+  historyLink: { color: colors.black, fontFamily: fonts.bold, fontSize: 15 },
   section: { gap: spacing.sm },
   sectionTitle: { fontSize: 13, fontFamily: fonts.medium, color: colors.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
   optionsRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
@@ -118,7 +128,7 @@ const styles = StyleSheet.create({
   optionText: { color: colors.black, fontFamily: fonts.medium },
   optionTextSelected: { color: colors.white, fontFamily: fonts.bold },
   startButton: {
-    marginTop: "auto",
+    marginTop: spacing.md,
     backgroundColor: colors.black,
     padding: 18,
     borderRadius: radii.pill,

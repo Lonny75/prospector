@@ -87,6 +87,18 @@ export interface DebriefResult {
   forme: DebriefAxis;
 }
 
+export interface SessionHistoryItem {
+  id: string;
+  status: SessionStatus;
+  startedAt: string;
+  endedAt?: string;
+  sectorLabel: string;
+  personaName: string;
+  objectionLevelLabel: string;
+  callFormatLabel: string;
+  overallScore: number | null;
+}
+
 export interface CallMetrics {
   wordsPerMinute: number;
   longSilences: { startedAtMs: number; durationMs: number }[];

@@ -9,6 +9,35 @@ import { generateDebrief } from "../services/debriefEngine.js";
  */
 export const sessionsRouter = Router();
 
+/** Historique des sessions d'un utilisateur, plus récentes en premier. */
+sessionsRouter.get("/", async (req, res) => {
+  const userId = req.query.userId as string | undefined;
+  if (!userId) {
+    res.status(400).json({ error: "userId requis" });
+    return;
+  }
+
+  const sessions = await prisma.trainingSession.findMany({
+    where: { userId },
+    orderBy: { startedAt: "desc" },
+    include: { sector: true, persona: true, objectionLevel: true, callFormat: true, debrief: true },
+  });
+
+  res.json(
+    sessions.map((s) => ({
+      id: s.id,
+      status: s.status,
+      startedAt: s.startedAt,
+      endedAt: s.endedAt,
+      sectorLabel: s.sector.label,
+      personaName: s.persona.name,
+      objectionLevelLabel: s.objectionLevel.label,
+      callFormatLabel: s.callFormat.label,
+      overallScore: s.debrief?.overallScore ?? null,
+    })),
+  );
+});
+
 sessionsRouter.post("/", async (req, res) => {
   const { userId, sectorId, personaId, objectionLevelId, callFormatId } = req.body as {
     userId: string;

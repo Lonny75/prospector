@@ -1,4 +1,4 @@
-import type { TrainingSession, DebriefResult, Sector, Persona, ObjectionLevel, CallFormat } from "@prospector/shared-types";
+import type { TrainingSession, DebriefResult, Sector, Persona, ObjectionLevel, CallFormat, SessionHistoryItem } from "@prospector/shared-types";
 
 // TODO Phase 1 : remplacer par une variable EAS/expo-constants une fois le déploiement Railway prêt.
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
@@ -73,5 +73,11 @@ export async function requestDebrief(sessionId: string): Promise<{ debriefId: st
 export async function fetchDebrief(sessionId: string): Promise<DebriefResult> {
   const res = await fetch(`${API_URL}/sessions/${sessionId}/debrief`);
   if (!res.ok) throw new Error("Débrief indisponible");
+  return res.json();
+}
+
+export async function fetchSessionHistory(userId: string): Promise<SessionHistoryItem[]> {
+  const res = await fetch(`${API_URL}/sessions?userId=${userId}`);
+  if (!res.ok) throw new Error("Échec de chargement de l'historique");
   return res.json();
 }
