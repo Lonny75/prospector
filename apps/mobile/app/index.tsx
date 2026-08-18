@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { View, Text, Pressable, ActivityIndicator, ScrollView, StyleSheet } from "react-native";
-import { useRouter, Stack } from "expo-router";
+import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import { fetchSectors, fetchPersonas, fetchObjectionLevels, fetchCallFormats, fetchTestUser, createTrainingSession } from "../lib/api";
 import { colors, radii, spacing, fonts } from "../lib/theme";
@@ -46,16 +46,12 @@ export default function HomeScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container} style={{ backgroundColor: colors.cream }}>
-      <Stack.Screen
-        options={{
-          headerRight: () => (
-            <Pressable onPress={() => router.push("/history")} hitSlop={10}>
-              <Text style={styles.historyLink}>Historique</Text>
-            </Pressable>
-          ),
-        }}
-      />
-      <Text style={styles.title}>Nouvel entraînement</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>Nouvel entraînement</Text>
+        <Pressable style={styles.historyButton} onPress={() => router.push("/history")} hitSlop={10}>
+          <Text style={styles.historyLink}>Historique</Text>
+        </Pressable>
+      </View>
 
       <Section title="Secteur" loading={sectors.isLoading} error={sectors.isError} onRetry={() => sectors.refetch()}>
         {sectors.data?.map((s) => (
@@ -145,8 +141,10 @@ function Option({ label, selected, onPress }: { label: string; selected: boolean
 
 const styles = StyleSheet.create({
   container: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl },
-  title: { fontSize: 24, fontFamily: fonts.extraBold, color: colors.black },
-  historyLink: { color: colors.black, fontFamily: fonts.bold, fontSize: 15 },
+  headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
+  title: { fontSize: 24, fontFamily: fonts.extraBold, color: colors.black, flexShrink: 1 },
+  historyButton: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, backgroundColor: colors.white, borderRadius: radii.pill },
+  historyLink: { color: colors.black, fontFamily: fonts.bold, fontSize: 14 },
   section: { gap: spacing.sm },
   sectionTitle: { fontSize: 13, fontFamily: fonts.medium, color: colors.textMuted, textTransform: "uppercase", letterSpacing: 0.5 },
   optionsRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },

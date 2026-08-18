@@ -74,7 +74,10 @@ export default function SessionScreen() {
     try {
       await conversation.startSession({
         agentId: ELEVENLABS_AGENT_ID,
-        overrides: voiceId ? { tts: { voiceId } } : undefined,
+        // Le persona décroche et parle en premier ("Allô ?"), pour que l'utilisateur sache
+        // immédiatement que c'est à lui de répondre, sans temps mort ambigu. Permission
+        // "first_message override" activée côté agent (même mécanisme que tts.voiceId).
+        overrides: { tts: voiceId ? { voiceId } : undefined, agent: { firstMessage: "Allô ?" } },
         // Le seul mécanisme fiable trouvé pour faire parvenir le sessionId jusqu'au custom LLM :
         // customLlmExtraBody s'injecte directement dans le corps envoyé à voice-llm-proxy.ts (pas via
         // le templating {{}} des request_headers, qui ne fonctionne jamais dans cette intégration —
