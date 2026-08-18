@@ -16,8 +16,9 @@ function packageDistDir(pkgName) {
 // la chaîne) — un conflit d'ID de module entre les deux modes de résolution de Metro dans ce
 // projet, jamais complètement identifié malgré plusieurs contournements. Solution plus fiable :
 // laisser Metro résoudre tout le monde à l'ancienne (via "main"), et ne router explicitement que
-// les deux imports qui n'ont PAS de "main" et nécessitent vraiment le champ "exports" :
-// @elevenlabs/react-native (condition "react-native") et @elevenlabs/client/internal (sous-chemin).
+// les imports qui n'ont PAS de "main" et nécessitent vraiment le champ "exports" :
+// @elevenlabs/react-native (condition "react-native"), @elevenlabs/client et son sous-chemin
+// @elevenlabs/client/internal.
 const defaultResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === "@elevenlabs/react-native") {
@@ -29,6 +30,12 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   if (moduleName === "@elevenlabs/client/internal") {
     return {
       filePath: path.join(packageDistDir("@elevenlabs/client"), "internal.js"),
+      type: "sourceFile",
+    };
+  }
+  if (moduleName === "@elevenlabs/client") {
+    return {
+      filePath: path.join(packageDistDir("@elevenlabs/client"), "index.js"),
       type: "sourceFile",
     };
   }
