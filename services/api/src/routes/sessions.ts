@@ -55,5 +55,35 @@ sessionsRouter.get("/:id/debrief", async (req, res) => {
     return;
   }
 
-  res.json(debrief);
+  // Le modèle Prisma stocke fond/forme à plat (fondScore, formeScore) + des tables séparées taguées
+  // par catégorie — mais les clients (mobile, apps/voice-test) attendent la même forme imbriquée
+  // que celle produite par Claude (DebriefResult dans @prospector/shared-types). On la reconstruit ici.
+  function axis(category: "fond" | "forme", score: number) {
+    return {
+      score,
+      strengths: debrief!.strengths
+        .filter((s) => s.category === category)
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((s) => s.text),
+      improvements: debrief!.improvements
+        .filter((i) => i.category === category)
+        .sort((a, b) => a.orderIndex - b.orderIndex)
+        .map((i) => ({ priority: i.priority as 1 | 2 | 3, text: i.text })),
+      verbatims: debrief!.verbatims
+        .filter((v) => v.axis === category)
+        .map((v) => ({
+          transcriptTurnIndex: v.transcriptTurnIndex,
+          quoteText: v.quoteText,
+          comment: v.comment,
+          type: v.type,
+          axis: v.axis,
+        })),
+    };
+  }
+
+  res.json({
+    overallScore: debrief.overallScore,
+    fond: axis("fond", debrief.fondScore),
+    forme: axis("forme", debrief.formeScore),
+  });
 });
