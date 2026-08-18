@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View, Text, Pressable, StyleSheet, PermissionsAndroid, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useConversation } from "@elevenlabs/react-native";
-import { endTrainingSession, requestDebrief } from "../../lib/api";
+import { endTrainingSession } from "../../lib/api";
 import { colors, radii, spacing, fonts } from "../../lib/theme";
 
 // TODO Phase 0 : ID de l'agent ElevenLabs configuré en "Custom LLM" pointant vers
@@ -42,7 +42,9 @@ export default function SessionScreen() {
     try {
       await conversation.endSession();
       await endTrainingSession(sessionId);
-      await requestDebrief(sessionId);
+      // La génération du débrief (appel à Claude) peut prendre jusqu'à une minute sur un appel
+      // long — on ne fait pas attendre l'utilisateur ici, l'écran de débrief prend le relais et
+      // affiche clairement que l'analyse est en cours.
       router.replace(`/debrief/${sessionId}`);
     } finally {
       setEnding(false);
@@ -66,7 +68,7 @@ export default function SessionScreen() {
         </Pressable>
       ) : (
         <Pressable style={styles.endButton} onPress={handleEnd} disabled={ending}>
-          <Text style={styles.buttonText}>{ending ? "Génération du débrief..." : "Terminer l'appel"}</Text>
+          <Text style={styles.buttonText}>{ending ? "Fin de l'appel..." : "Terminer l'appel"}</Text>
         </Pressable>
       )}
     </View>

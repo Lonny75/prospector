@@ -1,23 +1,53 @@
+import { useEffect, useState } from "react";
 import { ScrollView, View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { useLocalSearchParams } from "expo-router";
-import { useQuery } from "@tanstack/react-query";
-import { fetchDebrief } from "../../lib/api";
+import type { DebriefResult } from "@prospector/shared-types";
+import { requestDebrief, fetchDebrief } from "../../lib/api";
 import { colors, radii, spacing, fonts } from "../../lib/theme";
+
+type Status = "generating" | "ready" | "error";
 
 export default function DebriefScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
-  const debrief = useQuery({ queryKey: ["debrief", sessionId], queryFn: () => fetchDebrief(sessionId) });
+  const [status, setStatus] = useState<Status>("generating");
+  const [debrief, setDebrief] = useState<DebriefResult | null>(null);
 
-  if (debrief.isLoading) {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function run() {
+      try {
+        // requestDebrief déclenche la génération côté serveur (appel Claude, peut prendre jusqu'à
+        // une minute sur un appel long) et attend qu'elle soit terminée avant de continuer.
+        await requestDebrief(sessionId);
+        const data = await fetchDebrief(sessionId);
+        if (!cancelled) {
+          setDebrief(data);
+          setStatus("ready");
+        }
+      } catch (err) {
+        console.error("Échec de récupération du débrief", err);
+        if (!cancelled) setStatus("error");
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
+
+  if (status === "generating") {
     return (
       <View style={styles.center}>
-        <ActivityIndicator color={colors.black} />
-        <Text style={styles.muted}>Génération du débrief...</Text>
+        <ActivityIndicator color={colors.black} size="large" />
+        <Text style={styles.generatingTitle}>Analyse de ton appel en cours...</Text>
+        <Text style={styles.muted}>Ça peut prendre jusqu'à une minute selon la durée de l'appel.</Text>
       </View>
     );
   }
 
-  if (debrief.error || !debrief.data) {
+  if (status === "error" || !debrief) {
     return (
       <View style={styles.center}>
         <Text style={styles.muted}>Débrief indisponible pour le moment.</Text>
@@ -25,7 +55,7 @@ export default function DebriefScreen() {
     );
   }
 
-  const { overallScore, fond, forme } = debrief.data;
+  const { overallScore, fond, forme } = debrief;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -78,8 +108,9 @@ function Axis({
 
 const styles = StyleSheet.create({
   container: { padding: spacing.lg, gap: spacing.lg, backgroundColor: colors.cream },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: colors.cream },
-  muted: { fontFamily: fonts.medium, color: colors.textMuted },
+  center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, backgroundColor: colors.cream, padding: spacing.lg },
+  generatingTitle: { fontFamily: fonts.bold, fontSize: 17, color: colors.black, marginTop: spacing.sm, textAlign: "center" },
+  muted: { fontFamily: fonts.medium, color: colors.textMuted, textAlign: "center" },
   scoreCard: {
     backgroundColor: colors.purple,
     borderRadius: radii.card,
