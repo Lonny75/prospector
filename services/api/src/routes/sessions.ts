@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../config/db.js";
 import { generateDebrief } from "../services/debriefEngine.js";
+import { warmSystemPromptCache } from "../services/promptCache.js";
 
 /**
  * Routes de gestion des sessions d'entraînement. Montées derrière `requireAuth` (voir index.ts) :
@@ -44,6 +45,12 @@ sessionsRouter.post("/", async (req, res) => {
   });
 
   res.status(201).json(session);
+
+  // Non bloquant : le préchauffage a jusqu'à la fin du flow permission micro + connexion agent
+  // pour se terminer avant le premier vrai tour de parole (voir promptCache.ts).
+  warmSystemPromptCache(session.id).catch((err) => {
+    console.error("Échec du préchauffage du cache de prompt Claude", err);
+  });
 });
 
 /** Vrai si la session existe ET appartient à l'utilisateur connecté. */
