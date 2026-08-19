@@ -20,13 +20,18 @@ import { composeProspectSystemPrompt } from "@prospector/prompts";
  * docs/plan.md — testé avec dynamicVariable normale, secret__, et même une variable système garantie).
  * Le mécanisme qui fonctionne : `customLlmExtraBody` côté client (`startSession({ customLlmExtraBody:
  * { sessionId } })`) — c'est un événement de config structuré envoyé directement par le SDK, pas un
- * templating côté serveur ElevenLabs, donc pas soumis au même bug. Il s'injecte dans le corps JSON
- * envoyé ici (`req.body.sessionId`). Permission "custom_llm_extra_body" à activer côté agent
- * (`platform_settings.overrides.custom_llm_extra_body: true`).
+ * templating côté serveur ElevenLabs, donc pas soumis au même bug. Permission "custom_llm_extra_body"
+ * à activer côté agent (`platform_settings.overrides.custom_llm_extra_body: true`).
+ *
+ * ATTENTION à l'emplacement réel dans le corps reçu : ElevenLabs n'injecte PAS customLlmExtraBody à
+ * la racine du corps chat-completions, mais sous une clé `elevenlabs_extra_body` (confirmé le
+ * 2026-08-19 via un dump des requêtes brutes — non documenté, a fait planter la corrélation de
+ * session pendant plusieurs jours, `req.body.sessionId` étant toujours undefined). Le champ correct
+ * est `req.body.elevenlabs_extra_body.sessionId`.
  *
  * Le header x-prospector-session-id et le fallback "session in_progress la plus récente" restent en
- * secours si jamais `req.body.sessionId` est absent (ex: ancien client mobile pas encore mis à jour) —
- * mais ce fallback ne doit plus être le chemin normal.
+ * secours si jamais `elevenlabs_extra_body.sessionId` est absent (ex: ancien client mobile pas
+ * encore mis à jour) — mais ce fallback ne doit plus être le chemin normal.
  */
 export const voiceLlmProxyRouter = Router();
 
@@ -39,7 +44,10 @@ interface OpenAiCompatibleChatRequest {
   model?: string;
   messages: OpenAiCompatibleMessage[];
   stream?: boolean;
-  sessionId?: string;
+  // ElevenLabs enveloppe customLlmExtraBody sous cette clé plutôt que de le fusionner à la racine
+  // du corps (confirmé le 2026-08-19 via un dump des requêtes brutes — la doc ne le précise pas,
+  // et body.sessionId à plat était systématiquement undefined jusqu'ici).
+  elevenlabs_extra_body?: { sessionId?: string };
 }
 
 /**
@@ -152,13 +160,9 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
   try {
     const headerSessionId = req.header("x-prospector-session-id");
     const body = req.body as OpenAiCompatibleChatRequest;
-    // Diagnostic temporaire (2026-08-19) : la corrélation par customLlmExtraBody n'a jamais
-    // fonctionné en pratique (bodySessionId toujours undefined) — on capture tout ce qu'ElevenLabs
-    // envoie réellement pour trouver un identifiant fiable (ex: leur propre conversation_id).
-    console.log("voice-llm-proxy: headers bruts", JSON.stringify(req.headers));
-    console.log("voice-llm-proxy: body brut (sans messages)", JSON.stringify({ ...body, messages: undefined }));
+    const bodySessionId = body.elevenlabs_extra_body?.sessionId;
     console.log(
-      `voice-llm-proxy: requête reçue (bodySessionId=${JSON.stringify(body.sessionId)}, headerSessionId=${JSON.stringify(headerSessionId)}, messageCount=${Array.isArray(body.messages) ? body.messages.length : "n/a"})`,
+      `voice-llm-proxy: requête reçue (bodySessionId=${JSON.stringify(bodySessionId)}, headerSessionId=${JSON.stringify(headerSessionId)}, messageCount=${Array.isArray(body.messages) ? body.messages.length : "n/a"})`,
     );
     if (!Array.isArray(body.messages)) {
       console.error("voice-llm-proxy: requête sans messages exploitable", JSON.stringify(body));
@@ -171,7 +175,7 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
     let systemPrompt: string;
     let sessionStartedAtMs: number;
     try {
-      const context = await loadSessionPromptContext(body.sessionId, headerSessionId);
+      const context = await loadSessionPromptContext(bodySessionId, headerSessionId);
       sessionId = context.session.id;
       systemPrompt = context.systemPrompt;
       sessionStartedAtMs = context.session.startedAt.getTime();
