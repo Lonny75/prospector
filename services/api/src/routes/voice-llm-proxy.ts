@@ -42,7 +42,14 @@ interface OpenAiCompatibleChatRequest {
   sessionId?: string;
 }
 
-function toOpenAiChunk(sessionId: string, deltaText: string, finishReason: string | null) {
+/**
+ * Le format chat-completions streamé attend un `role: "assistant"` sur le premier delta — sans
+ * quoi certains consommateurs OpenAI-compatible stricts (dont, semble-t-il, ElevenLabs côté
+ * custom LLM) rejettent le flux silencieusement plutôt que de l'ignorer (observé le 2026-08-19 :
+ * réponse correcte en direct via curl, mais "Server error: Unknown error" systématique côté
+ * ElevenLabs — le flux ne posait jamais problème hors de leur pipeline).
+ */
+function toOpenAiChunk(sessionId: string, deltaText: string, finishReason: string | null, isFirstChunk: boolean) {
   return {
     id: `chatcmpl-${sessionId}`,
     object: "chat.completion.chunk",
@@ -51,7 +58,7 @@ function toOpenAiChunk(sessionId: string, deltaText: string, finishReason: strin
     choices: [
       {
         index: 0,
-        delta: finishReason ? {} : { content: deltaText },
+        delta: finishReason ? {} : { ...(isFirstChunk ? { role: "assistant" as const } : {}), content: deltaText },
         finish_reason: finishReason,
       },
     ],
@@ -212,14 +219,18 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
         messages: anthropicMessages,
       });
 
+      // Chunk dédié annonçant `role: "assistant"` avant tout contenu, comme le fait l'API OpenAI
+      // réelle — voir le commentaire sur toOpenAiChunk.
+      res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", null, true))}\n\n`);
+
       stream.on("text", (delta) => {
         fullText += delta;
-        res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, delta, null))}\n\n`);
+        res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, delta, null, false))}\n\n`);
       });
 
       await stream.finalMessage();
 
-      res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", "stop"))}\n\n`);
+      res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", "stop", false))}\n\n`);
       res.write("data: [DONE]\n\n");
       res.end();
 
