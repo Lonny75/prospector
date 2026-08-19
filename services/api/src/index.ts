@@ -6,6 +6,7 @@ import { sessionsRouter } from "./routes/sessions.js";
 import { catalogRouter } from "./routes/catalog.js";
 import { authRouter } from "./routes/auth.js";
 import { requireAuth } from "./middleware/requireAuth.js";
+import { anthropic, CLAUDE_PROSPECT_MODEL } from "./config/anthropic.js";
 
 const app = express();
 app.use(cors());
@@ -23,4 +24,13 @@ app.use("/catalog", catalogRouter);
 const port = process.env.PORT ? Number(process.env.PORT) : 3001;
 app.listen(port, () => {
   console.log(`Prospector API démarrée sur http://localhost:${port}`);
+
+  // Le tout premier appel Anthropic après un (re)démarrage du conteneur coûte ~10s (connexion TLS
+  // à froid), indépendamment du prompt — observé le 2026-08-19 en isolant deux appels identiques
+  // sur la même combinaison (11s puis 2,8s). On paie ce coût ici, au démarrage, plutôt que sur le
+  // premier appel réel d'un utilisateur.
+  anthropic.messages
+    .create({ model: CLAUDE_PROSPECT_MODEL, max_tokens: 1, messages: [{ role: "user", content: "." }] })
+    .then(() => console.log("Connexion Anthropic préchauffée"))
+    .catch((err) => console.error("Échec du préchauffage de la connexion Anthropic", err));
 });
