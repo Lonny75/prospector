@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { View, Text, Pressable, StyleSheet, PermissionsAndroid, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useConversation } from "@elevenlabs/react-native";
-import { endTrainingSession, fetchTrainingSession } from "../../lib/api";
+import { endTrainingSession, fetchTrainingSession, warmTrainingSession } from "../../lib/api";
 import { colors, radii, spacing, fonts } from "../../lib/theme";
 
 // TODO Phase 0 : ID de l'agent ElevenLabs configuré en "Custom LLM" pointant vers
@@ -17,6 +17,7 @@ export default function SessionScreen() {
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
   const router = useRouter();
   const [ending, setEnding] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [voiceId, setVoiceId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [callError, setCallError] = useState<string | null>(null);
@@ -71,7 +72,12 @@ export default function SessionScreen() {
         return;
       }
     }
+    setStarting(true);
     try {
+      // Réchauffe le cache de prompt Claude pour CETTE tentative précise — celui fait à la création
+      // de session ne suffit pas si on retente l'appel ici après un échec, ou si on a attendu avant
+      // de démarrer : le cache éphémère Claude a une durée de vie courte (voir promptCache.ts).
+      await warmTrainingSession(sessionId).catch((err) => console.error("Échec du préchauffage", err));
       await conversation.startSession({
         agentId: ELEVENLABS_AGENT_ID,
         // TODO : agent.firstMessage ("Allô ?" pour que le persona parle en premier) désactivé
@@ -88,6 +94,8 @@ export default function SessionScreen() {
     } catch (err) {
       console.error("Échec du démarrage de l'appel", err);
       setCallError("Impossible de démarrer l'appel. Réessaie dans quelques instants.");
+    } finally {
+      setStarting(false);
     }
   }
 
@@ -133,8 +141,12 @@ export default function SessionScreen() {
           </Pressable>
         </View>
       ) : !isConnected ? (
-        <Pressable style={[styles.startButton, !voiceId && styles.startButtonDisabled]} onPress={handleStart} disabled={!voiceId}>
-          <Text style={styles.buttonText}>{voiceId ? "Démarrer l'appel" : "Chargement..."}</Text>
+        <Pressable
+          style={[styles.startButton, (!voiceId || starting) && styles.startButtonDisabled]}
+          onPress={handleStart}
+          disabled={!voiceId || starting}
+        >
+          <Text style={styles.buttonText}>{!voiceId ? "Chargement..." : starting ? "Préparation..." : "Démarrer l'appel"}</Text>
         </Pressable>
       ) : (
         <Pressable style={styles.endButton} onPress={handleEnd} disabled={ending}>

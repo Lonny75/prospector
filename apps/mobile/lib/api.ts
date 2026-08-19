@@ -92,6 +92,11 @@ export async function fetchTrainingSession(
   return res.json();
 }
 
+export async function warmTrainingSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${API_URL}/sessions/${sessionId}/warm`, { method: "POST", headers: authHeaders() });
+  if (!res.ok) throw new Error("Échec du préchauffage de la session");
+}
+
 export async function endTrainingSession(sessionId: string): Promise<TrainingSession> {
   const res = await fetch(`${API_URL}/sessions/${sessionId}/end`, { method: "POST", headers: authHeaders() });
   if (!res.ok) throw new Error("Échec de fin de session");

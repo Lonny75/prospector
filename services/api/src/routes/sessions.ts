@@ -78,6 +78,28 @@ sessionsRouter.get("/:id", async (req, res) => {
   res.json(session);
 });
 
+/**
+ * Préchauffe (ou réchauffe) le cache de prompt Claude pour cette session, juste avant que
+ * l'utilisateur démarre effectivement l'appel côté mobile. Le préchauffage fait à la création de
+ * session (voir POST /) ne suffit pas si l'utilisateur retente l'appel sur le même écran après un
+ * échec, ou attend plusieurs minutes avant de parler — le cache éphémère Claude a une durée de vie
+ * courte (observé le 2026-08-19 : une session déjà utilisée ~1h plus tôt redevenait froide).
+ */
+sessionsRouter.post("/:id/warm", async (req, res) => {
+  const owned = await findOwnedSession(req.params.id, req.userId!);
+  if (!owned) {
+    res.status(404).json({ error: "Session introuvable" });
+    return;
+  }
+
+  try {
+    await warmSystemPromptCache(req.params.id);
+  } catch (err) {
+    console.error("Échec du préchauffage du cache de prompt Claude", err);
+  }
+  res.status(204).end();
+});
+
 sessionsRouter.post("/:id/end", async (req, res) => {
   const owned = await findOwnedSession(req.params.id, req.userId!);
   if (!owned) {
