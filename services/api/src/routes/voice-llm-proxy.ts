@@ -152,6 +152,11 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
   try {
     const headerSessionId = req.header("x-prospector-session-id");
     const body = req.body as OpenAiCompatibleChatRequest;
+    // Diagnostic temporaire (2026-08-19) : la corrélation par customLlmExtraBody n'a jamais
+    // fonctionné en pratique (bodySessionId toujours undefined) — on capture tout ce qu'ElevenLabs
+    // envoie réellement pour trouver un identifiant fiable (ex: leur propre conversation_id).
+    console.log("voice-llm-proxy: headers bruts", JSON.stringify(req.headers));
+    console.log("voice-llm-proxy: body brut (sans messages)", JSON.stringify({ ...body, messages: undefined }));
     console.log(
       `voice-llm-proxy: requête reçue (bodySessionId=${JSON.stringify(body.sessionId)}, headerSessionId=${JSON.stringify(headerSessionId)}, messageCount=${Array.isArray(body.messages) ? body.messages.length : "n/a"})`,
     );
