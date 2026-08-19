@@ -30,7 +30,7 @@ function AppShell() {
     <ConversationProvider>
       <Stack
         screenOptions={{
-          headerTitle: "Prospector",
+          headerTitle: "Prospectora",
           headerStyle: { backgroundColor: colors.cream },
           headerTitleStyle: { fontFamily: "PlusJakartaSans_700Bold" },
           contentStyle: { backgroundColor: colors.cream },

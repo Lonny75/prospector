@@ -35,7 +35,7 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <Text style={styles.title}>Prospector</Text>
+      <Text style={styles.title}>Prospectora</Text>
       <Text style={styles.subtitle}>{mode === "login" ? "Connecte-toi pour continuer" : "Crée ton compte"}</Text>
 
       {mode === "signup" && (

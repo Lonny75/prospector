@@ -36,7 +36,7 @@ export function LoadingScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Prospector</Text>
+      <Text style={styles.title}>Prospectora</Text>
       <View style={styles.track}>
         <Animated.View style={[styles.knob, { transform: [{ translateX }] }]} />
       </View>
