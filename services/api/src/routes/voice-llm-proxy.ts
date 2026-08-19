@@ -138,87 +138,108 @@ async function recordTranscriptTurn(params: {
 }
 
 voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
-  const headerSessionId = req.header("x-prospector-session-id");
-  const body = req.body as OpenAiCompatibleChatRequest;
-  const lastUserMessage = [...body.messages].reverse().find((m) => m.role === "user");
-
-  let sessionId: string;
-  let systemPrompt: string;
-  let sessionStartedAtMs: number;
+  // Tout le handler est sous ce try/catch : Express 4 n'intercepte pas les rejets de promesse
+  // levés dans un handler async, donc toute exception non attrapée ici laisserait la requête sans
+  // réponse jusqu'au timeout côté ElevenLabs (observé le 2026-08-19 : "Server error: Unknown error"
+  // générique côté client, sans aucune trace d'erreur serveur — la requête n'avait jamais répondu).
   try {
-    const context = await loadSessionPromptContext(body.sessionId, headerSessionId);
-    sessionId = context.session.id;
-    systemPrompt = context.systemPrompt;
-    sessionStartedAtMs = context.session.startedAt.getTime();
+    const headerSessionId = req.header("x-prospector-session-id");
+    const body = req.body as OpenAiCompatibleChatRequest;
+    console.log(
+      `voice-llm-proxy: requête reçue (bodySessionId=${JSON.stringify(body.sessionId)}, headerSessionId=${JSON.stringify(headerSessionId)}, messageCount=${Array.isArray(body.messages) ? body.messages.length : "n/a"})`,
+    );
+    if (!Array.isArray(body.messages)) {
+      console.error("voice-llm-proxy: requête sans messages exploitable", JSON.stringify(body));
+      res.status(400).json({ error: "messages manquant ou invalide" });
+      return;
+    }
+    const lastUserMessage = [...body.messages].reverse().find((m) => m.role === "user");
+
+    let sessionId: string;
+    let systemPrompt: string;
+    let sessionStartedAtMs: number;
+    try {
+      const context = await loadSessionPromptContext(body.sessionId, headerSessionId);
+      sessionId = context.session.id;
+      systemPrompt = context.systemPrompt;
+      sessionStartedAtMs = context.session.startedAt.getTime();
+    } catch (err) {
+      console.error("voice-llm-proxy: impossible de résoudre une session", err);
+      res.status(404).json({ error: "Aucune session disponible pour cet appel" });
+      return;
+    }
+
+    // Timestamps stockés en ms RELATIFS au début de la session (pas en epoch absolu, qui
+    // déborderait la colonne Int32 en base — voir callMetrics.ts qui attend des offsets courts).
+    const turnStartedAt = Date.now() - sessionStartedAtMs;
+
+    if (lastUserMessage) {
+      await recordTranscriptTurn({
+        sessionId,
+        speaker: "rep",
+        text: lastUserMessage.content,
+        startedAtMs: turnStartedAt,
+        endedAtMs: turnStartedAt,
+      });
+    }
+
+    // Historique de conversation (hors system) traduit au format Anthropic.
+    const anthropicMessages = body.messages
+      .filter((m) => m.role !== "system")
+      .map((m) => ({
+        role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+        content: m.content,
+      }));
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    const streamId = randomUUID();
+    let fullText = "";
+
+    try {
+      const stream = anthropic.messages.stream({
+        model: CLAUDE_PROSPECT_MODEL,
+        max_tokens: 300,
+        system: [
+          {
+            type: "text",
+            text: systemPrompt,
+            cache_control: { type: "ephemeral" },
+          },
+        ],
+        messages: anthropicMessages,
+      });
+
+      stream.on("text", (delta) => {
+        fullText += delta;
+        res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, delta, null))}\n\n`);
+      });
+
+      await stream.finalMessage();
+
+      res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", "stop"))}\n\n`);
+      res.write("data: [DONE]\n\n");
+      res.end();
+
+      await recordTranscriptTurn({
+        sessionId,
+        speaker: "prospect",
+        text: fullText,
+        startedAtMs: turnStartedAt,
+        endedAtMs: Date.now() - sessionStartedAtMs,
+      });
+    } catch (err) {
+      console.error("voice-llm-proxy: erreur de streaming Claude", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Erreur interne du pont IA" });
+      } else {
+        res.end();
+      }
+    }
   } catch (err) {
-    console.error("voice-llm-proxy: impossible de résoudre une session", err);
-    res.status(404).json({ error: "Aucune session disponible pour cet appel" });
-    return;
-  }
-
-  // Timestamps stockés en ms RELATIFS au début de la session (pas en epoch absolu, qui déborderait
-  // la colonne Int32 en base — voir callMetrics.ts qui attend des offsets courts, pas des dates).
-  const turnStartedAt = Date.now() - sessionStartedAtMs;
-
-  if (lastUserMessage) {
-    await recordTranscriptTurn({
-      sessionId,
-      speaker: "rep",
-      text: lastUserMessage.content,
-      startedAtMs: turnStartedAt,
-      endedAtMs: turnStartedAt,
-    });
-  }
-
-  // Historique de conversation (hors system) traduit au format Anthropic.
-  const anthropicMessages = body.messages
-    .filter((m) => m.role !== "system")
-    .map((m) => ({
-      role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
-      content: m.content,
-    }));
-
-  res.setHeader("Content-Type", "text/event-stream");
-  res.setHeader("Cache-Control", "no-cache");
-  res.setHeader("Connection", "keep-alive");
-
-  const streamId = randomUUID();
-  let fullText = "";
-
-  try {
-    const stream = anthropic.messages.stream({
-      model: CLAUDE_PROSPECT_MODEL,
-      max_tokens: 300,
-      system: [
-        {
-          type: "text",
-          text: systemPrompt,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      messages: anthropicMessages,
-    });
-
-    stream.on("text", (delta) => {
-      fullText += delta;
-      res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, delta, null))}\n\n`);
-    });
-
-    await stream.finalMessage();
-
-    res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", "stop"))}\n\n`);
-    res.write("data: [DONE]\n\n");
-    res.end();
-
-    await recordTranscriptTurn({
-      sessionId,
-      speaker: "prospect",
-      text: fullText,
-      startedAtMs: turnStartedAt,
-      endedAtMs: Date.now() - sessionStartedAtMs,
-    });
-  } catch (err) {
-    console.error("voice-llm-proxy: erreur de streaming Claude", err);
+    console.error("voice-llm-proxy: erreur inattendue", err);
     if (!res.headersSent) {
       res.status(500).json({ error: "Erreur interne du pont IA" });
     } else {
