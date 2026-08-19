@@ -2,19 +2,14 @@ import { FlatList, View, Text, Pressable, ActivityIndicator, StyleSheet } from "
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
 import type { SessionHistoryItem } from "@prospector/shared-types";
-import { fetchTestUser, fetchSessionHistory } from "../lib/api";
+import { fetchSessionHistory } from "../lib/api";
 import { colors, radii, spacing, fonts } from "../lib/theme";
 
 export default function HistoryScreen() {
   const router = useRouter();
-  const testUser = useQuery({ queryKey: ["test-user"], queryFn: fetchTestUser });
-  const history = useQuery({
-    queryKey: ["session-history", testUser.data?.id],
-    queryFn: () => fetchSessionHistory(testUser.data!.id),
-    enabled: !!testUser.data,
-  });
+  const history = useQuery({ queryKey: ["session-history"], queryFn: fetchSessionHistory });
 
-  if (testUser.isLoading || history.isLoading) {
+  if (history.isLoading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator color={colors.black} />

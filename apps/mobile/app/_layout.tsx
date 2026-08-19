@@ -13,10 +13,32 @@ import {
 } from "@expo-google-fonts/plus-jakarta-sans";
 import { colors } from "../lib/theme";
 import { LoadingScreen } from "../components/LoadingScreen";
+import { AuthProvider, useAuth } from "../lib/auth";
+import LoginScreen from "./login";
 
 const queryClient = new QueryClient();
 
 SplashScreen.preventAutoHideAsync();
+
+function AppShell() {
+  const { user, loading } = useAuth();
+
+  if (loading) return <LoadingScreen />;
+  if (!user) return <LoginScreen />;
+
+  return (
+    <ConversationProvider>
+      <Stack
+        screenOptions={{
+          headerTitle: "Prospector",
+          headerStyle: { backgroundColor: colors.cream },
+          headerTitleStyle: { fontFamily: "PlusJakartaSans_700Bold" },
+          contentStyle: { backgroundColor: colors.cream },
+        }}
+      />
+    </ConversationProvider>
+  );
+}
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
@@ -37,16 +59,9 @@ export default function RootLayout() {
     <View style={{ flex: 1 }} onLayout={onLayoutRootView}>
       {fontsLoaded ? (
         <QueryClientProvider client={queryClient}>
-          <ConversationProvider>
-            <Stack
-              screenOptions={{
-                headerTitle: "Prospector",
-                headerStyle: { backgroundColor: colors.cream },
-                headerTitleStyle: { fontFamily: "PlusJakartaSans_700Bold" },
-                contentStyle: { backgroundColor: colors.cream },
-              }}
-            />
-          </ConversationProvider>
+          <AuthProvider>
+            <AppShell />
+          </AuthProvider>
         </QueryClientProvider>
       ) : (
         <LoadingScreen />

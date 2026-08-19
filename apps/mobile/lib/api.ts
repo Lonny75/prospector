@@ -1,13 +1,48 @@
 import type { TrainingSession, DebriefResult, Sector, Persona, ObjectionLevel, CallFormat, SessionHistoryItem } from "@prospector/shared-types";
 
-// TODO Phase 1 : remplacer par une variable EAS/expo-constants une fois le déploiement Railway prêt.
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
 
-/** Phase 0/1 uniquement — pas d'auth encore (voir services/api/src/routes/catalog.ts). */
-export async function fetchTestUser(): Promise<{ id: string }> {
-  const res = await fetch(`${API_URL}/catalog/test-user`);
-  if (!res.ok) throw new Error("Échec de chargement de l'utilisateur de test");
-  return res.json();
+export type AuthUser = { id: string; email: string; name: string; role: string };
+
+// Tenu en mémoire par AuthProvider (voir lib/auth.tsx) — pas de lecture async de SecureStore à
+// chaque requête, juste au démarrage de l'app.
+let authToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
+
+function authHeaders(): HeadersInit {
+  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+}
+
+async function parseJsonOrThrow(res: Response, fallbackMessage: string) {
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.error ?? fallbackMessage);
+  return body;
+}
+
+export async function signup(params: { email: string; name: string; password: string }): Promise<{ token: string; user: AuthUser }> {
+  const res = await fetch(`${API_URL}/auth/signup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return parseJsonOrThrow(res, "Échec de l'inscription");
+}
+
+export async function login(params: { email: string; password: string }): Promise<{ token: string; user: AuthUser }> {
+  const res = await fetch(`${API_URL}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return parseJsonOrThrow(res, "Échec de la connexion");
+}
+
+export async function fetchMe(): Promise<AuthUser> {
+  const res = await fetch(`${API_URL}/auth/me`, { headers: authHeaders() });
+  return parseJsonOrThrow(res, "Session invalide");
 }
 
 export async function fetchSectors(): Promise<Sector[]> {
@@ -35,7 +70,6 @@ export async function fetchCallFormats(): Promise<CallFormat[]> {
 }
 
 export async function createTrainingSession(params: {
-  userId: string;
   sectorId: string;
   personaId: string;
   objectionLevelId: string;
@@ -43,7 +77,7 @@ export async function createTrainingSession(params: {
 }): Promise<TrainingSession> {
   const res = await fetch(`${API_URL}/sessions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(params),
   });
   if (!res.ok) throw new Error("Échec de création de la session");
@@ -53,31 +87,31 @@ export async function createTrainingSession(params: {
 export async function fetchTrainingSession(
   sessionId: string,
 ): Promise<TrainingSession & { persona: Persona }> {
-  const res = await fetch(`${API_URL}/sessions/${sessionId}`);
+  const res = await fetch(`${API_URL}/sessions/${sessionId}`, { headers: authHeaders() });
   if (!res.ok) throw new Error("Échec de chargement de la session");
   return res.json();
 }
 
 export async function endTrainingSession(sessionId: string): Promise<TrainingSession> {
-  const res = await fetch(`${API_URL}/sessions/${sessionId}/end`, { method: "POST" });
+  const res = await fetch(`${API_URL}/sessions/${sessionId}/end`, { method: "POST", headers: authHeaders() });
   if (!res.ok) throw new Error("Échec de fin de session");
   return res.json();
 }
 
 export async function requestDebrief(sessionId: string): Promise<{ debriefId: string; flaggedForReview: boolean }> {
-  const res = await fetch(`${API_URL}/sessions/${sessionId}/debrief`, { method: "POST" });
+  const res = await fetch(`${API_URL}/sessions/${sessionId}/debrief`, { method: "POST", headers: authHeaders() });
   if (!res.ok) throw new Error("Échec de génération du débrief");
   return res.json();
 }
 
 export async function fetchDebrief(sessionId: string): Promise<DebriefResult> {
-  const res = await fetch(`${API_URL}/sessions/${sessionId}/debrief`);
+  const res = await fetch(`${API_URL}/sessions/${sessionId}/debrief`, { headers: authHeaders() });
   if (!res.ok) throw new Error("Débrief indisponible");
   return res.json();
 }
 
-export async function fetchSessionHistory(userId: string): Promise<SessionHistoryItem[]> {
-  const res = await fetch(`${API_URL}/sessions?userId=${userId}`);
+export async function fetchSessionHistory(): Promise<SessionHistoryItem[]> {
+  const res = await fetch(`${API_URL}/sessions`, { headers: authHeaders() });
   if (!res.ok) throw new Error("Échec de chargement de l'historique");
   return res.json();
 }

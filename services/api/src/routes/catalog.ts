@@ -19,8 +19,3 @@ catalogRouter.get("/objection-levels", async (_req, res) => {
 catalogRouter.get("/call-formats", async (_req, res) => {
   res.json(await prisma.callFormat.findMany());
 });
-
-/** Phase 0/1 uniquement — pas d'auth encore, à retirer une fois la Phase 3 (OAuth) en place. */
-catalogRouter.get("/test-user", async (_req, res) => {
-  res.json(await prisma.user.findFirstOrThrow());
-});

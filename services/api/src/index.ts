@@ -4,6 +4,8 @@ import cors from "cors";
 import { voiceLlmProxyRouter } from "./routes/voice-llm-proxy.js";
 import { sessionsRouter } from "./routes/sessions.js";
 import { catalogRouter } from "./routes/catalog.js";
+import { authRouter } from "./routes/auth.js";
+import { requireAuth } from "./middleware/requireAuth.js";
 
 const app = express();
 app.use(cors());
@@ -14,7 +16,8 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/voice/llm", voiceLlmProxyRouter);
-app.use("/sessions", sessionsRouter);
+app.use("/auth", authRouter);
+app.use("/sessions", requireAuth, sessionsRouter);
 app.use("/catalog", catalogRouter);
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3001;

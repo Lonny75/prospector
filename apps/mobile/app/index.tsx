@@ -2,19 +2,18 @@ import { useState } from "react";
 import { View, Text, Pressable, ActivityIndicator, ScrollView, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
-import { fetchSectors, fetchPersonas, fetchObjectionLevels, fetchCallFormats, fetchTestUser, createTrainingSession } from "../lib/api";
+import { fetchSectors, fetchPersonas, fetchObjectionLevels, fetchCallFormats, createTrainingSession } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { colors, radii, spacing, fonts } from "../lib/theme";
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { logout } = useAuth();
   const [sectorId, setSectorId] = useState<string | null>(null);
   const [personaId, setPersonaId] = useState<string | null>(null);
   const [objectionLevelId, setObjectionLevelId] = useState<string | null>(null);
   const [callFormatId, setCallFormatId] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
-
-  // TODO Phase 3 : remplacer par l'utilisateur authentifié réel (OAuth Google, voir docs/plan.md).
-  const testUser = useQuery({ queryKey: ["test-user"], queryFn: fetchTestUser });
 
   const sectors = useQuery({ queryKey: ["sectors"], queryFn: fetchSectors });
   const personas = useQuery({
@@ -25,14 +24,13 @@ export default function HomeScreen() {
   const objectionLevels = useQuery({ queryKey: ["objection-levels"], queryFn: fetchObjectionLevels });
   const callFormats = useQuery({ queryKey: ["call-formats"], queryFn: fetchCallFormats });
 
-  const canStart = testUser.data && sectorId && personaId && objectionLevelId && callFormatId;
+  const canStart = sectorId && personaId && objectionLevelId && callFormatId;
 
   async function handleStart() {
-    if (!canStart || !testUser.data) return;
+    if (!canStart) return;
     setStarting(true);
     try {
       const session = await createTrainingSession({
-        userId: testUser.data.id,
         sectorId: sectorId!,
         personaId: personaId!,
         objectionLevelId: objectionLevelId!,
@@ -48,9 +46,14 @@ export default function HomeScreen() {
     <ScrollView contentContainerStyle={styles.container} style={{ backgroundColor: colors.cream }}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Nouvel entraînement</Text>
-        <Pressable style={styles.historyButton} onPress={() => router.push("/history")} hitSlop={10}>
-          <Text style={styles.historyLink}>Historique</Text>
-        </Pressable>
+        <View style={styles.headerActions}>
+          <Pressable style={styles.historyButton} onPress={() => router.push("/history")} hitSlop={10}>
+            <Text style={styles.historyLink}>Historique</Text>
+          </Pressable>
+          <Pressable style={styles.historyButton} onPress={logout} hitSlop={10}>
+            <Text style={styles.historyLink}>Déconnexion</Text>
+          </Pressable>
+        </View>
       </View>
 
       <Section title="Secteur" loading={sectors.isLoading} error={sectors.isError} onRetry={() => sectors.refetch()}>
@@ -78,15 +81,6 @@ export default function HomeScreen() {
           <Option key={f.id} label={f.label} selected={f.id === callFormatId} onPress={() => setCallFormatId(f.id)} />
         ))}
       </Section>
-
-      {testUser.isError && (
-        <View style={styles.errorBanner}>
-          <Text style={styles.errorText}>Impossible de te connecter au serveur. Vérifie ta connexion.</Text>
-          <Pressable onPress={() => testUser.refetch()}>
-            <Text style={styles.retryText}>Réessayer</Text>
-          </Pressable>
-        </View>
-      )}
 
       <Pressable
         style={[styles.startButton, !canStart && styles.startButtonDisabled]}
@@ -143,6 +137,7 @@ const styles = StyleSheet.create({
   container: { padding: spacing.lg, gap: spacing.lg, paddingBottom: spacing.xl },
   headerRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm },
   title: { fontSize: 24, fontFamily: fonts.extraBold, color: colors.black, flexShrink: 1 },
+  headerActions: { flexDirection: "row", gap: spacing.xs },
   historyButton: { paddingVertical: spacing.xs, paddingHorizontal: spacing.sm, backgroundColor: colors.white, borderRadius: radii.pill },
   historyLink: { color: colors.black, fontFamily: fonts.bold, fontSize: 14 },
   section: { gap: spacing.sm },
@@ -158,7 +153,6 @@ const styles = StyleSheet.create({
   optionText: { color: colors.black, fontFamily: fonts.medium },
   optionTextSelected: { color: colors.white, fontFamily: fonts.bold },
   sectionError: { gap: spacing.xs },
-  errorBanner: { backgroundColor: colors.white, borderRadius: radii.card, padding: spacing.md, gap: spacing.xs, borderWidth: 1, borderColor: colors.red },
   errorText: { fontFamily: fonts.medium, color: colors.red },
   retryText: { fontFamily: fonts.bold, color: colors.black },
   startButton: {

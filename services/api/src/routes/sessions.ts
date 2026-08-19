@@ -3,22 +3,15 @@ import { prisma } from "../config/db.js";
 import { generateDebrief } from "../services/debriefEngine.js";
 
 /**
- * Routes minimales pour la Phase 0/1 : créer une session d'entraînement et déclencher son débrief.
- * Pas d'authentification ici — à ajouter en Phase 3 (voir docs/plan.md). Suffisant pour les tests
- * de bout en bout du spike (voix + débrief) avec un utilisateur de test seedé (voir prisma/seed.ts).
+ * Routes de gestion des sessions d'entraînement. Montées derrière `requireAuth` (voir index.ts) :
+ * `req.userId` est l'utilisateur authentifié, jamais une valeur fournie par le client.
  */
 export const sessionsRouter = Router();
 
-/** Historique des sessions d'un utilisateur, plus récentes en premier. */
+/** Historique des sessions de l'utilisateur connecté, plus récentes en premier. */
 sessionsRouter.get("/", async (req, res) => {
-  const userId = req.query.userId as string | undefined;
-  if (!userId) {
-    res.status(400).json({ error: "userId requis" });
-    return;
-  }
-
   const sessions = await prisma.trainingSession.findMany({
-    where: { userId },
+    where: { userId: req.userId },
     orderBy: { startedAt: "desc" },
     include: { sector: true, persona: true, objectionLevel: true, callFormat: true, debrief: true },
   });
@@ -39,8 +32,7 @@ sessionsRouter.get("/", async (req, res) => {
 });
 
 sessionsRouter.post("/", async (req, res) => {
-  const { userId, sectorId, personaId, objectionLevelId, callFormatId } = req.body as {
-    userId: string;
+  const { sectorId, personaId, objectionLevelId, callFormatId } = req.body as {
     sectorId: string;
     personaId: string;
     objectionLevelId: string;
@@ -48,17 +40,23 @@ sessionsRouter.post("/", async (req, res) => {
   };
 
   const session = await prisma.trainingSession.create({
-    data: { userId, sectorId, personaId, objectionLevelId, callFormatId },
+    data: { userId: req.userId!, sectorId, personaId, objectionLevelId, callFormatId },
   });
 
   res.status(201).json(session);
 });
 
-sessionsRouter.get("/:id", async (req, res) => {
+/** Vrai si la session existe ET appartient à l'utilisateur connecté. */
+async function findOwnedSession(sessionId: string, userId: string) {
   const session = await prisma.trainingSession.findUnique({
-    where: { id: req.params.id },
+    where: { id: sessionId },
     include: { persona: true, sector: true, objectionLevel: true, callFormat: true },
   });
+  return session && session.userId === userId ? session : null;
+}
+
+sessionsRouter.get("/:id", async (req, res) => {
+  const session = await findOwnedSession(req.params.id, req.userId!);
 
   if (!session) {
     res.status(404).json({ error: "Session introuvable" });
@@ -69,6 +67,12 @@ sessionsRouter.get("/:id", async (req, res) => {
 });
 
 sessionsRouter.post("/:id/end", async (req, res) => {
+  const owned = await findOwnedSession(req.params.id, req.userId!);
+  if (!owned) {
+    res.status(404).json({ error: "Session introuvable" });
+    return;
+  }
+
   const session = await prisma.trainingSession.update({
     where: { id: req.params.id },
     data: { status: "completed", endedAt: new Date() },
@@ -78,6 +82,12 @@ sessionsRouter.post("/:id/end", async (req, res) => {
 });
 
 sessionsRouter.post("/:id/debrief", async (req, res) => {
+  const owned = await findOwnedSession(req.params.id, req.userId!);
+  if (!owned) {
+    res.status(404).json({ error: "Session introuvable" });
+    return;
+  }
+
   try {
     const result = await generateDebrief(req.params.id);
     res.json(result);
@@ -88,6 +98,12 @@ sessionsRouter.post("/:id/debrief", async (req, res) => {
 });
 
 sessionsRouter.get("/:id/debrief", async (req, res) => {
+  const owned = await findOwnedSession(req.params.id, req.userId!);
+  if (!owned) {
+    res.status(404).json({ error: "Session introuvable" });
+    return;
+  }
+
   const debrief = await prisma.debrief.findUnique({
     where: { sessionId: req.params.id },
     include: { strengths: true, improvements: true, verbatims: true },

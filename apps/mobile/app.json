@@ -16,7 +16,10 @@
     },
     "android": {
       "package": "com.prospector.app",
-      "permissions": ["RECORD_AUDIO", "MODIFY_AUDIO_SETTINGS"]
+      "permissions": [
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -30,7 +33,8 @@
             "kotlinVersion": "1.9.25"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {
