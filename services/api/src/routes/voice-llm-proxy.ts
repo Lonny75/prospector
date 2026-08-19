@@ -132,6 +132,19 @@ async function nextTurnIndex(sessionId: string): Promise<number> {
  * avec l'export post-appel d'ElevenLabs si celui-ci fournit des timestamps par tour de parole —
  * c'est le point à vérifier en Phase 0 (voir docs/plan.md, section "Moteur de débrief").
  */
+function isUniqueConstraintError(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err && (err as { code: unknown }).code === "P2002";
+}
+
+/**
+ * ElevenLabs envoie parfois plusieurs requêtes quasi simultanées pour le même tour de parole
+ * (observé le 2026-08-19 : jusqu'à 6 requêtes identiques à quelques millisecondes d'intervalle
+ * pour la même session). `nextTurnIndex` + `create` n'étant pas atomique, deux requêtes
+ * concurrentes peuvent calculer le même index et se percuter sur la contrainte d'unicité
+ * (session_id, turn_index) — ce qui faisait planter TOUTE la requête (et donc la réponse à
+ * ElevenLabs) avant ce correctif. On retente avec un index frais quelques fois ; si ça persiste,
+ * c'est un doublon exact, pas la peine d'insister.
+ */
 async function recordTranscriptTurn(params: {
   sessionId: string;
   speaker: "rep" | "prospect";
@@ -139,17 +152,26 @@ async function recordTranscriptTurn(params: {
   startedAtMs: number;
   endedAtMs: number;
 }) {
-  const turnIndex = await nextTurnIndex(params.sessionId);
-  await prisma.transcript.create({
-    data: {
-      sessionId: params.sessionId,
-      turnIndex,
-      speaker: params.speaker,
-      text: params.text,
-      startedAtMs: params.startedAtMs,
-      endedAtMs: params.endedAtMs,
-    },
-  });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const turnIndex = await nextTurnIndex(params.sessionId);
+    try {
+      await prisma.transcript.create({
+        data: {
+          sessionId: params.sessionId,
+          turnIndex,
+          speaker: params.speaker,
+          text: params.text,
+          startedAtMs: params.startedAtMs,
+          endedAtMs: params.endedAtMs,
+        },
+      });
+      return;
+    } catch (err) {
+      if (!isUniqueConstraintError(err)) throw err;
+      console.warn(`recordTranscriptTurn: collision sur turnIndex ${turnIndex} pour la session ${params.sessionId}, nouvelle tentative`);
+    }
+  }
+  console.warn(`recordTranscriptTurn: abandon après collisions répétées pour la session ${params.sessionId} (doublon probable)`);
 }
 
 voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
