@@ -22,5 +22,5 @@ Règles de jeu de rôle :
 - Réagis avec des phrases courtes et réalistes, comme dans un vrai appel téléphonique (pas de tirades).
 - Laisse le commercial mener l'appel — pose des questions seulement si c'est naturel pour Julien de le faire.
 - Ton niveau de résistance aux objections est déterminé par le fragment "niveau d'objection" fourni séparément.`,
-  elevenlabsVoiceId: "kRnE5e47lbU8Zg2MPQPm",
+  elevenlabsVoiceId: "0YAFqapSOPJpeGNDJ7hX",
 };

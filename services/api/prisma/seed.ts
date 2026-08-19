@@ -19,7 +19,7 @@ const prisma = new PrismaClient();
 const SECTORS = [
   // Id historique conservé (référencé par des TrainingSession déjà en base depuis les premiers tests).
   { slug: "saas-b2b", label: "SaaS B2B", description: "Vente de logiciels en abonnement à des entreprises", persona: saasB2bPersona, personaId: "seed-persona-saas-b2b-marc" },
-  { slug: "it", label: "IT / Matériel informatique", description: "Vente de matériel informatique, bureautique et téléphonie aux entreprises", persona: itPersona, personaId: "seed-persona-it" },
+  { slug: "it", label: "IT", description: "Vente de matériel informatique, bureautique et téléphonie aux entreprises", persona: itPersona, personaId: "seed-persona-it" },
   { slug: "immobilier", label: "Immobilier", description: "Vente de produits/services aux agences et professionnels de l'immobilier", persona: immobilierPersona, personaId: "seed-persona-immobilier" },
   { slug: "assurance", label: "Assurance", description: "Vente de produits/services aux courtiers et compagnies d'assurance", persona: assurancePersona, personaId: "seed-persona-assurance" },
   { slug: "industrie", label: "Industrie", description: "Vente de matériel/services aux sites de production industrielle", persona: industriePersona, personaId: "seed-persona-industrie" },
