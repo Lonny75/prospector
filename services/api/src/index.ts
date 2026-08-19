@@ -5,6 +5,7 @@ import { voiceLlmProxyRouter } from "./routes/voice-llm-proxy.js";
 import { sessionsRouter } from "./routes/sessions.js";
 import { catalogRouter } from "./routes/catalog.js";
 import { authRouter } from "./routes/auth.js";
+import { googleAuthRouter } from "./routes/googleAuth.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { anthropic, CLAUDE_PROSPECT_MODEL } from "./config/anthropic.js";
 
@@ -18,6 +19,7 @@ app.get("/health", (_req, res) => {
 
 app.use("/voice/llm", voiceLlmProxyRouter);
 app.use("/auth", authRouter);
+app.use("/auth/google", googleAuthRouter);
 app.use("/sessions", requireAuth, sessionsRouter);
 app.use("/catalog", catalogRouter);
 

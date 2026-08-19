@@ -9,6 +9,7 @@ interface AuthContextValue {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, name: string, password: string) => Promise<void>;
+  completeGoogleLogin: (token: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -54,6 +55,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await applySession(token, sessionUser);
   }, []);
 
+  // Le callback Google (voir googleAuth.ts) ne renvoie que le JWT dans l'URL de redirection —
+  // on récupère l'utilisateur séparément via /auth/me, comme au démarrage de l'app.
+  const completeGoogleLogin = useCallback(async (token: string) => {
+    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    setAuthToken(token);
+    setUser(await fetchMe());
+  }, []);
+
   const logout = useCallback(async () => {
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     setAuthToken(null);
@@ -61,7 +70,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, completeGoogleLogin, logout }}>
       {children}
     </AuthContext.Provider>
   );

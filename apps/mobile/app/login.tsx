@@ -1,16 +1,20 @@
 import { useState } from "react";
 import { View, Text, TextInput, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, StyleSheet } from "react-native";
+import * as WebBrowser from "expo-web-browser";
+import * as Linking from "expo-linking";
 import { useAuth } from "../lib/auth";
+import { API_URL } from "../lib/api";
 import { colors, radii, spacing, fonts } from "../lib/theme";
 
 export default function LoginScreen() {
-  const { login, signup } = useAuth();
+  const { login, signup, completeGoogleLogin } = useAuth();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [googleSubmitting, setGoogleSubmitting] = useState(false);
 
   async function handleSubmit() {
     setError(null);
@@ -25,6 +29,30 @@ export default function LoginScreen() {
       setError(err instanceof Error ? err.message : "Une erreur est survenue");
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleGoogleLogin() {
+    setError(null);
+    setGoogleSubmitting(true);
+    try {
+      // Le backend fait l'échange de code Google (voir services/api/src/routes/googleAuth.ts) et
+      // redirige vers ce schéma personnalisé avec notre propre JWT — openAuthSessionAsync capture
+      // cette redirection sans jamais quitter réellement l'app.
+      const returnUrl = Linking.createURL("auth-callback");
+      const result = await WebBrowser.openAuthSessionAsync(`${API_URL}/auth/google/start`, returnUrl);
+      if (result.type !== "success" || !result.url) return;
+
+      const token = new URL(result.url).searchParams.get("token");
+      if (!token) {
+        setError("La connexion Google a échoué. Réessaie.");
+        return;
+      }
+      await completeGoogleLogin(token);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "La connexion Google a échoué.");
+    } finally {
+      setGoogleSubmitting(false);
     }
   }
 
@@ -74,6 +102,16 @@ export default function LoginScreen() {
         {submitting ? <ActivityIndicator color={colors.white} /> : <Text style={styles.submitText}>{mode === "login" ? "Se connecter" : "Créer mon compte"}</Text>}
       </Pressable>
 
+      <View style={styles.dividerRow}>
+        <View style={styles.dividerLine} />
+        <Text style={styles.dividerText}>ou</Text>
+        <View style={styles.dividerLine} />
+      </View>
+
+      <Pressable style={styles.googleButton} disabled={googleSubmitting} onPress={handleGoogleLogin}>
+        {googleSubmitting ? <ActivityIndicator color={colors.black} /> : <Text style={styles.googleText}>Continuer avec Google</Text>}
+      </Pressable>
+
       <Pressable
         onPress={() => {
           setError(null);
@@ -111,5 +149,17 @@ const styles = StyleSheet.create({
   },
   submitButtonDisabled: { opacity: 0.35 },
   submitText: { color: colors.white, fontFamily: fonts.bold, fontSize: 16 },
+  dividerRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },
+  dividerLine: { flex: 1, height: 1, backgroundColor: colors.textMuted, opacity: 0.3 },
+  dividerText: { color: colors.textMuted, fontFamily: fonts.medium, fontSize: 13 },
+  googleButton: {
+    backgroundColor: colors.white,
+    borderRadius: radii.pill,
+    paddingVertical: spacing.md,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: colors.textMuted,
+  },
+  googleText: { color: colors.black, fontFamily: fonts.bold, fontSize: 16 },
   switchModeText: { color: colors.black, fontFamily: fonts.medium, textAlign: "center", marginTop: spacing.lg },
 });

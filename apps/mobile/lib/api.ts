@@ -1,6 +1,6 @@
 import type { TrainingSession, DebriefResult, Sector, Persona, ObjectionLevel, CallFormat, SessionHistoryItem } from "@prospector/shared-types";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export type AuthUser = { id: string; email: string; name: string; role: string };
 
