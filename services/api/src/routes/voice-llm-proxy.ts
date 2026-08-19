@@ -179,6 +179,7 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
   // levés dans un handler async, donc toute exception non attrapée ici laisserait la requête sans
   // réponse jusqu'au timeout côté ElevenLabs (observé le 2026-08-19 : "Server error: Unknown error"
   // générique côté client, sans aucune trace d'erreur serveur — la requête n'avait jamais répondu).
+  const requestStartedAt = Date.now();
   try {
     const headerSessionId = req.header("x-prospector-session-id");
     const body = req.body as OpenAiCompatibleChatRequest;
@@ -254,7 +255,12 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
       // réelle — voir le commentaire sur toOpenAiChunk.
       res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", null, true))}\n\n`);
 
+      let firstChunkAt: number | null = null;
       stream.on("text", (delta) => {
+        if (firstChunkAt === null) {
+          firstChunkAt = Date.now();
+          console.log(`voice-llm-proxy: premier token Claude reçu après ${firstChunkAt - requestStartedAt}ms`);
+        }
         fullText += delta;
         res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, delta, null, false))}\n\n`);
       });
@@ -264,6 +270,7 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
       res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", "stop", false))}\n\n`);
       res.write("data: [DONE]\n\n");
       res.end();
+      console.log(`voice-llm-proxy: réponse complète envoyée après ${Date.now() - requestStartedAt}ms`);
 
       await recordTranscriptTurn({
         sessionId,
@@ -273,7 +280,7 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
         endedAtMs: Date.now() - sessionStartedAtMs,
       });
     } catch (err) {
-      console.error("voice-llm-proxy: erreur de streaming Claude", err);
+      console.error(`voice-llm-proxy: erreur de streaming Claude après ${Date.now() - requestStartedAt}ms`, err);
       if (!res.headersSent) {
         res.status(500).json({ error: "Erreur interne du pont IA" });
       } else {
@@ -281,7 +288,7 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
       }
     }
   } catch (err) {
-    console.error("voice-llm-proxy: erreur inattendue", err);
+    console.error(`voice-llm-proxy: erreur inattendue après ${Date.now() - requestStartedAt}ms`, err);
     if (!res.headersSent) {
       res.status(500).json({ error: "Erreur interne du pont IA" });
     } else {
