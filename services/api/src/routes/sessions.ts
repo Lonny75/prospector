@@ -44,13 +44,18 @@ sessionsRouter.post("/", async (req, res) => {
     data: { userId: req.userId!, sectorId, personaId, objectionLevelId, callFormatId },
   });
 
-  res.status(201).json(session);
-
-  // Non bloquant : le préchauffage a jusqu'à la fin du flow permission micro + connexion agent
-  // pour se terminer avant le premier vrai tour de parole (voir promptCache.ts).
-  warmSystemPromptCache(session.id).catch((err) => {
+  // Bloquant (voir promptCache.ts) : en tâche de fond, rien ne garantit que le préchauffage se
+  // termine avant que l'utilisateur parle (observé le 2026-08-19 — permission micro déjà accordée,
+  // connexion agent rapide, la course était perdue). Ici, quelques secondes d'attente pendant la
+  // création de session (déjà visible côté app via le spinner "starting") valent bien mieux qu'un
+  // appel qui plante en plein milieu.
+  try {
+    await warmSystemPromptCache(session.id);
+  } catch (err) {
     console.error("Échec du préchauffage du cache de prompt Claude", err);
-  });
+  }
+
+  res.status(201).json(session);
 });
 
 /** Vrai si la session existe ET appartient à l'utilisateur connecté. */
