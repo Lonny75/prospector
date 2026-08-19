@@ -1,5 +1,6 @@
-import { Router } from "express";
+import { Router, type Response } from "express";
 import { randomUUID } from "node:crypto";
+import { EventEmitter } from "node:events";
 import { prisma } from "../config/db.js";
 import { anthropic, CLAUDE_PROSPECT_MODEL } from "../config/anthropic.js";
 import { composeProspectSystemPrompt } from "@prospector/prompts";
@@ -174,6 +175,115 @@ async function recordTranscriptTurn(params: {
   console.warn(`recordTranscriptTurn: abandon après collisions répétées pour la session ${params.sessionId} (doublon probable)`);
 }
 
+/**
+ * Une génération Claude en cours pour une session, partagée entre la requête d'origine et
+ * d'éventuels doublons concurrents envoyés par ElevenLabs pour le même tour de parole (observé le
+ * 2026-08-19 : jusqu'à 6 requêtes identiques à quelques millisecondes d'intervalle). Sans ce
+ * partage, chaque doublon déclenchait son propre appel Claude indépendant — ElevenLabs recevait
+ * alors deux réponses différentes pour un seul tour, ce qui semble perturber leur pipeline même
+ * quand chacune de nos réponses est individuellement correcte et rapide.
+ */
+interface InFlightTurn {
+  emitter: EventEmitter;
+  chunks: string[];
+  done: boolean;
+  errored: boolean;
+}
+
+const inFlightTurns = new Map<string, InFlightTurn>();
+
+/** Abonne une réponse HTTP (originale ou doublon) au flux d'un tour, en rejouant ce qui est déjà passé. */
+function subscribeToTurn(res: Response, streamId: string, turn: InFlightTurn) {
+  res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", null, true))}\n\n`);
+  for (const chunk of turn.chunks) {
+    res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, chunk, null, false))}\n\n`);
+  }
+
+  if (turn.done) {
+    res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", "stop", false))}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+    return;
+  }
+  if (turn.errored) {
+    res.end();
+    return;
+  }
+
+  const onChunk = (delta: string) => {
+    res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, delta, null, false))}\n\n`);
+  };
+  const onDone = () => {
+    cleanup();
+    res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", "stop", false))}\n\n`);
+    res.write("data: [DONE]\n\n");
+    res.end();
+  };
+  const onError = () => {
+    cleanup();
+    res.end();
+  };
+  function cleanup() {
+    turn.emitter.off("chunk", onChunk);
+    turn.emitter.off("done", onDone);
+    turn.emitter.off("error", onError);
+  }
+  turn.emitter.on("chunk", onChunk);
+  turn.emitter.once("done", onDone);
+  turn.emitter.once("error", onError);
+}
+
+async function runGeneration(params: {
+  sessionId: string;
+  systemPrompt: string;
+  anthropicMessages: { role: "user" | "assistant"; content: string }[];
+  turn: InFlightTurn;
+  requestStartedAt: number;
+  turnStartedAt: number;
+  sessionStartedAtMs: number;
+}) {
+  const { turn } = params;
+  try {
+    const stream = anthropic.messages.stream({
+      model: CLAUDE_PROSPECT_MODEL,
+      max_tokens: 300,
+      system: [{ type: "text", text: params.systemPrompt, cache_control: { type: "ephemeral" } }],
+      messages: params.anthropicMessages,
+    });
+
+    let firstChunkAt: number | null = null;
+    stream.on("text", (delta) => {
+      if (firstChunkAt === null) {
+        firstChunkAt = Date.now();
+        console.log(`voice-llm-proxy: premier token Claude reçu après ${firstChunkAt - params.requestStartedAt}ms`);
+      }
+      turn.chunks.push(delta);
+      turn.emitter.emit("chunk", delta);
+    });
+
+    await stream.finalMessage();
+    turn.done = true;
+    console.log(`voice-llm-proxy: réponse complète envoyée après ${Date.now() - params.requestStartedAt}ms`);
+    turn.emitter.emit("done");
+
+    await recordTranscriptTurn({
+      sessionId: params.sessionId,
+      speaker: "prospect",
+      text: turn.chunks.join(""),
+      startedAtMs: params.turnStartedAt,
+      endedAtMs: Date.now() - params.sessionStartedAtMs,
+    });
+  } catch (err) {
+    turn.errored = true;
+    console.error(`voice-llm-proxy: erreur de streaming Claude après ${Date.now() - params.requestStartedAt}ms`, err);
+    turn.emitter.emit("error", err);
+  } finally {
+    // On garde l'entrée quelques secondes après la fin pour absorber les doublons qui arrivent
+    // juste après (rejoués depuis turn.chunks/turn.done), puis on nettoie.
+    setTimeout(() => inFlightTurns.delete(params.sessionId), 5000);
+  }
+}
+
 voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
   // Tout le handler est sous ce try/catch : Express 4 n'intercepte pas les rejets de promesse
   // levés dans un handler async, donc toute exception non attrapée ici laisserait la requête sans
@@ -212,16 +322,6 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
     // déborderait la colonne Int32 en base — voir callMetrics.ts qui attend des offsets courts).
     const turnStartedAt = Date.now() - sessionStartedAtMs;
 
-    if (lastUserMessage) {
-      await recordTranscriptTurn({
-        sessionId,
-        speaker: "rep",
-        text: lastUserMessage.content,
-        startedAtMs: turnStartedAt,
-        endedAtMs: turnStartedAt,
-      });
-    }
-
     // Historique de conversation (hors system) traduit au format Anthropic.
     const anthropicMessages = body.messages
       .filter((m) => m.role !== "system")
@@ -235,58 +335,33 @@ voiceLlmProxyRouter.post("/chat/completions", async (req, res) => {
     res.setHeader("Connection", "keep-alive");
 
     const streamId = randomUUID();
-    let fullText = "";
 
-    try {
-      const stream = anthropic.messages.stream({
-        model: CLAUDE_PROSPECT_MODEL,
-        max_tokens: 300,
-        system: [
-          {
-            type: "text",
-            text: systemPrompt,
-            cache_control: { type: "ephemeral" },
-          },
-        ],
-        messages: anthropicMessages,
-      });
+    // Le Map.get + Map.set doit rester synchrone (aucun `await` entre les deux) : deux requêtes
+    // dupliquées arrivent parfois à quelques microsecondes d'intervalle (observé le 2026-08-19), et
+    // Node ne les entrelace qu'aux points de suspension `await` — un `await` entre la vérification
+    // et la pose de l'entrée laisserait passer les deux en génération indépendante.
+    const existingTurn = inFlightTurns.get(sessionId);
+    if (existingTurn) {
+      console.log(`voice-llm-proxy: requête dupliquée pour la session ${sessionId}, réutilisation du flux en cours`);
+      subscribeToTurn(res, streamId, existingTurn);
+      return;
+    }
+    const turn: InFlightTurn = { emitter: new EventEmitter(), chunks: [], done: false, errored: false };
+    turn.emitter.setMaxListeners(20);
+    inFlightTurns.set(sessionId, turn);
+    subscribeToTurn(res, streamId, turn);
 
-      // Chunk dédié annonçant `role: "assistant"` avant tout contenu, comme le fait l'API OpenAI
-      // réelle — voir le commentaire sur toOpenAiChunk.
-      res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", null, true))}\n\n`);
-
-      let firstChunkAt: number | null = null;
-      stream.on("text", (delta) => {
-        if (firstChunkAt === null) {
-          firstChunkAt = Date.now();
-          console.log(`voice-llm-proxy: premier token Claude reçu après ${firstChunkAt - requestStartedAt}ms`);
-        }
-        fullText += delta;
-        res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, delta, null, false))}\n\n`);
-      });
-
-      await stream.finalMessage();
-
-      res.write(`data: ${JSON.stringify(toOpenAiChunk(streamId, "", "stop", false))}\n\n`);
-      res.write("data: [DONE]\n\n");
-      res.end();
-      console.log(`voice-llm-proxy: réponse complète envoyée après ${Date.now() - requestStartedAt}ms`);
-
+    if (lastUserMessage) {
       await recordTranscriptTurn({
         sessionId,
-        speaker: "prospect",
-        text: fullText,
+        speaker: "rep",
+        text: lastUserMessage.content,
         startedAtMs: turnStartedAt,
-        endedAtMs: Date.now() - sessionStartedAtMs,
+        endedAtMs: turnStartedAt,
       });
-    } catch (err) {
-      console.error(`voice-llm-proxy: erreur de streaming Claude après ${Date.now() - requestStartedAt}ms`, err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Erreur interne du pont IA" });
-      } else {
-        res.end();
-      }
     }
+
+    void runGeneration({ sessionId, systemPrompt, anthropicMessages, turn, requestStartedAt, turnStartedAt, sessionStartedAtMs });
   } catch (err) {
     console.error(`voice-llm-proxy: erreur inattendue après ${Date.now() - requestStartedAt}ms`, err);
     if (!res.headersSent) {
