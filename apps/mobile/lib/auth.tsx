@@ -8,7 +8,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, name: string, password: string) => Promise<void>;
+  signup: (email: string, name: string, password: string, inviteCode?: string) => Promise<void>;
   completeGoogleLogin: (token: string) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -50,8 +50,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await applySession(token, sessionUser);
   }, []);
 
-  const signup = useCallback(async (email: string, name: string, password: string) => {
-    const { token, user: sessionUser } = await apiSignup({ email, name, password });
+  const signup = useCallback(async (email: string, name: string, password: string, inviteCode?: string) => {
+    const { token, user: sessionUser } = await apiSignup({ email, name, password, inviteCode });
     await applySession(token, sessionUser);
   }, []);
 

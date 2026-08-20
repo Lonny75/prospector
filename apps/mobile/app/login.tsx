@@ -12,6 +12,7 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
@@ -23,7 +24,7 @@ export default function LoginScreen() {
       if (mode === "login") {
         await login(email.trim(), password);
       } else {
-        await signup(email.trim(), name.trim(), password);
+        await signup(email.trim(), name.trim(), password, inviteCode.trim() || undefined);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Une erreur est survenue");
@@ -95,6 +96,16 @@ export default function LoginScreen() {
         secureTextEntry
         autoComplete="password"
       />
+      {mode === "signup" && (
+        <TextInput
+          style={styles.input}
+          placeholder="Code d'invitation (si tu rejoins une équipe)"
+          placeholderTextColor={colors.textMuted}
+          value={inviteCode}
+          onChangeText={setInviteCode}
+          autoCapitalize="none"
+        />
+      )}
 
       {error && <Text style={styles.error}>{error}</Text>}
 

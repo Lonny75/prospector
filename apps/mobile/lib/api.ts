@@ -2,7 +2,7 @@ import type { TrainingSession, DebriefResult, Sector, Persona, ObjectionLevel, C
 
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:3001";
 
-export type AuthUser = { id: string; email: string; name: string; role: string };
+export type AuthUser = { id: string; email: string; name: string; role: string; organizationId: string | null };
 
 // Tenu en mémoire par AuthProvider (voir lib/auth.tsx) — pas de lecture async de SecureStore à
 // chaque requête, juste au démarrage de l'app.
@@ -22,7 +22,7 @@ async function parseJsonOrThrow(res: Response, fallbackMessage: string) {
   return body;
 }
 
-export async function signup(params: { email: string; name: string; password: string }): Promise<{ token: string; user: AuthUser }> {
+export async function signup(params: { email: string; name: string; password: string; inviteCode?: string }): Promise<{ token: string; user: AuthUser }> {
   const res = await fetch(`${API_URL}/auth/signup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

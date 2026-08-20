@@ -99,6 +99,26 @@ export interface SessionHistoryItem {
   overallScore: number | null;
 }
 
+export interface OrganizationMember {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  sessionCount: number;
+  averageScore: number | null;
+}
+
+export interface OrganizationSummary {
+  id: string;
+  name: string;
+  plan: string | null;
+  seatsPurchased: number;
+  subscriptionStatus: string | null;
+  trialEndsAt: string | null;
+  inviteCode: string;
+  members: OrganizationMember[];
+}
+
 export interface CallMetrics {
   wordsPerMinute: number;
   longSilences: { startedAtMs: number; durationMs: number }[];

@@ -35,12 +35,18 @@ enum VerbatimType {
 }
 
 model Organization {
-  id               String   @id @default(uuid())
-  name             String
-  stripeCustomerId String?  @unique @map("stripe_customer_id")
-  seatsPurchased   Int      @default(0) @map("seats_purchased")
-  plan             String?
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                   String    @id @default(uuid())
+  name                 String
+  inviteCode           String    @unique @map("invite_code")
+  stripeCustomerId     String?   @unique @map("stripe_customer_id")
+  stripeSubscriptionId String?   @unique @map("stripe_subscription_id")
+  // Valeurs Stripe brutes non modélisées en enum (trialing/active/past_due/canceled/incomplete...)
+  // pour rester synchro sans avoir à étendre le schéma à chaque nouveau statut Stripe.
+  subscriptionStatus String?   @map("subscription_status")
+  trialEndsAt        DateTime? @map("trial_ends_at")
+  seatsPurchased     Int       @default(0) @map("seats_purchased")
+  plan               String?
+  createdAt          DateTime  @default(now()) @map("created_at")
 
   users User[]
 
