@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+.env.local
+.expo/
+.expo-shared/
+.git/
+.vercel/
+apps/mobile/
+apps/web/
