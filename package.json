@@ -12,5 +12,9 @@
     "dev:web": "npm run dev --workspace=apps/web",
     "build": "npm run prisma:generate --workspace=services/api && npm run build --workspace=services/api",
     "start": "npm run start --workspace=services/api"
+  },
+  "devDependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
   }
 }

@@ -8,5 +8,6 @@ dist/
 .DS_Store
 ios/
 android/
+.vercel/
 apps/web/AGENTS.md
 apps/web/CLAUDE.md
