@@ -18,8 +18,20 @@ export default function DebriefScreen() {
 
     async function run() {
       try {
-        // requestDebrief déclenche la génération côté serveur (appel Claude, peut prendre jusqu'à
-        // une minute sur un appel long) et attend qu'elle soit terminée avant de continuer.
+        // Cas fréquent : débrief déjà généré (retour depuis l'historique) — on l'affiche
+        // immédiatement sans repasser par requestDebrief, qui déclencherait une régénération
+        // coûteuse et inutile côté serveur (jusqu'à une minute d'appel Claude Opus).
+        try {
+          const existing = await fetchDebrief(sessionId);
+          if (!cancelled) {
+            setDebrief(existing);
+            setStatus("ready");
+          }
+          return;
+        } catch {
+          // Pas encore de débrief pour cette session — on en déclenche la génération ci-dessous.
+        }
+
         await requestDebrief(sessionId);
         const data = await fetchDebrief(sessionId);
         if (!cancelled) {

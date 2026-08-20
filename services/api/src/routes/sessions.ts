@@ -122,6 +122,15 @@ sessionsRouter.post("/:id/debrief", async (req, res) => {
     return;
   }
 
+  // Idempotent : un débrief déjà généré ne doit jamais être régénéré (coûteux, jusqu'à une minute
+  // d'appel Claude Opus) — observé le 2026-08-20, revenir sur un débrief depuis l'historique le
+  // relançait à chaque fois inutilement.
+  const existing = await prisma.debrief.findUnique({ where: { sessionId: req.params.id } });
+  if (existing) {
+    res.json({ debriefId: existing.id, flaggedForReview: false });
+    return;
+  }
+
   try {
     const result = await generateDebrief(req.params.id);
     res.json(result);
