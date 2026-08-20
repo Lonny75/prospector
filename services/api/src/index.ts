@@ -7,11 +7,17 @@ import { catalogRouter } from "./routes/catalog.js";
 import { authRouter } from "./routes/auth.js";
 import { googleAuthRouter } from "./routes/googleAuth.js";
 import { organizationsRouter } from "./routes/organizations.js";
+import { billingRouter, handleStripeWebhook } from "./routes/billing.js";
 import { requireAuth } from "./middleware/requireAuth.js";
 import { anthropic, CLAUDE_PROSPECT_MODEL } from "./config/anthropic.js";
 
 const app = express();
 app.use(cors());
+
+// Monté AVANT express.json() : Stripe exige le corps brut (non parsé) pour vérifier la signature
+// de la requête (voir routes/billing.ts).
+app.post("/billing/webhook", express.raw({ type: "application/json" }), handleStripeWebhook);
+
 app.use(express.json());
 
 app.get("/health", (_req, res) => {
@@ -24,6 +30,7 @@ app.use("/auth/google", googleAuthRouter);
 app.use("/sessions", requireAuth, sessionsRouter);
 app.use("/catalog", catalogRouter);
 app.use("/organizations", requireAuth, organizationsRouter);
+app.use("/billing", requireAuth, billingRouter);
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3001;
 app.listen(port, () => {
