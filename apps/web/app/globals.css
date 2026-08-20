@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+/* Palette reprise de apps/mobile/lib/theme.ts — cohérence de marque mobile/web. Passe de design
+   visuel prévue séparément une fois le back-end + dashboard fonctionnels (voir plan). */
+:root {
+  --color-purple: #b48de6;
+  --color-red: #f24646;
+  --color-black: #232323;
+  --color-cream: #eeedea;
+  --color-white: #ffffff;
+  --color-text-muted: #8a8a8a;
+}
+
+@theme inline {
+  --color-purple: var(--color-purple);
+  --color-red: var(--color-red);
+  --color-black: var(--color-black);
+  --color-cream: var(--color-cream);
+  --color-text-muted: var(--color-text-muted);
+  --font-sans: var(--font-plus-jakarta-sans);
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-black);
+}

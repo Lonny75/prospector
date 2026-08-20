@@ -8,3 +8,5 @@ dist/
 .DS_Store
 ios/
 android/
+apps/web/AGENTS.md
+apps/web/CLAUDE.md
