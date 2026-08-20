@@ -35,6 +35,7 @@ app.use("/billing", requireAuth, billingRouter);
 const port = process.env.PORT ? Number(process.env.PORT) : 3001;
 app.listen(port, () => {
   console.log(`Prospector API démarrée sur http://localhost:${port}`);
+  console.log(`DEBUG FRONTEND_URL=${JSON.stringify(process.env.FRONTEND_URL)}`);
 
   // Le tout premier appel Anthropic après un (re)démarrage du conteneur coûte ~10s (connexion TLS
   // à froid), indépendamment du prompt — observé le 2026-08-19 en isolant deux appels identiques
