@@ -9,35 +9,45 @@ export const billingRouter = Router();
 billingRouter.use(requireManager);
 
 billingRouter.post("/checkout", async (req, res) => {
-  const org = await prisma.organization.findUniqueOrThrow({ where: { id: req.organizationId } });
-  const seats = Math.max(1, Number((req.body as { seats?: number }).seats) || 1);
+  try {
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: req.organizationId } });
+    const seats = Math.max(1, Number((req.body as { seats?: number }).seats) || 1);
 
-  const session = await stripe.checkout.sessions.create({
-    mode: "subscription",
-    customer: org.stripeCustomerId ?? undefined,
-    client_reference_id: org.id,
-    line_items: [{ price: STRIPE_PRICE_ID, quantity: seats }],
-    subscription_data: { trial_period_days: 14 },
-    success_url: `${WEB_APP_URL}/dashboard/billing?checkout=success`,
-    cancel_url: `${WEB_APP_URL}/dashboard/billing?checkout=cancelled`,
-  });
+    const session = await stripe.checkout.sessions.create({
+      mode: "subscription",
+      customer: org.stripeCustomerId ?? undefined,
+      client_reference_id: org.id,
+      line_items: [{ price: STRIPE_PRICE_ID, quantity: seats }],
+      subscription_data: { trial_period_days: 14 },
+      success_url: `${WEB_APP_URL}/dashboard/billing?checkout=success`,
+      cancel_url: `${WEB_APP_URL}/dashboard/billing?checkout=cancelled`,
+    });
 
-  res.json({ url: session.url });
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error("Échec de création de la session de paiement Stripe", err);
+    res.status(500).json({ error: "Échec de la création de la session de paiement" });
+  }
 });
 
 billingRouter.post("/portal", async (req, res) => {
-  const org = await prisma.organization.findUniqueOrThrow({ where: { id: req.organizationId } });
-  if (!org.stripeCustomerId) {
-    res.status(404).json({ error: "Aucun abonnement à gérer pour le moment" });
-    return;
+  try {
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: req.organizationId } });
+    if (!org.stripeCustomerId) {
+      res.status(404).json({ error: "Aucun abonnement à gérer pour le moment" });
+      return;
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: org.stripeCustomerId,
+      return_url: `${WEB_APP_URL}/dashboard/billing`,
+    });
+
+    res.json({ url: session.url });
+  } catch (err) {
+    console.error("Échec d'ouverture du portail de facturation Stripe", err);
+    res.status(500).json({ error: "Échec de l'ouverture du portail de facturation" });
   }
-
-  const session = await stripe.billingPortal.sessions.create({
-    customer: org.stripeCustomerId,
-    return_url: `${WEB_APP_URL}/dashboard/billing`,
-  });
-
-  res.json({ url: session.url });
 });
 
 /**
@@ -67,16 +77,29 @@ export async function handleStripeWebhook(req: Request, res: Response) {
         const session = event.data.object;
         const organizationId = session.client_reference_id;
         if (organizationId && session.customer && session.subscription) {
+          // On récupère l'abonnement complet ici plutôt que d'attendre un futur
+          // customer.subscription.updated : l'ordre d'arrivée entre les deux événements n'est pas
+          // garanti, et à ce stade l'org n'est pas encore liée par stripeSubscriptionId (le lookup
+          // du cas customer.subscription.* ci-dessous échouerait silencieusement s'il arrivait en
+          // premier).
+          const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
           await prisma.organization.update({
             where: { id: organizationId },
             data: {
               stripeCustomerId: session.customer as string,
-              stripeSubscriptionId: session.subscription as string,
+              stripeSubscriptionId: subscription.id,
+              subscriptionStatus: subscription.status,
+              seatsPurchased: subscription.items.data[0]?.quantity ?? 0,
+              trialEndsAt: subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+              plan: "starter",
             },
           });
         }
         break;
       }
+      // .created est géré directement dans checkout.session.completed ci-dessus (ordre d'arrivée
+      // non garanti entre les deux événements) — ces deux-ci couvrent les changements ultérieurs
+      // (renouvellement, changement de sièges via le portail, annulation).
       case "customer.subscription.updated":
       case "customer.subscription.deleted": {
         const subscription = event.data.object;
